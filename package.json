@@ -1,0 +1,7 @@
+{
+  "name": "crono-balance-industrial",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Aplicação PWA para cronoanálise e balanceamento de linhas industriais",
+  "scripts": { "start": "python3 -m http.server 4173" }
+}

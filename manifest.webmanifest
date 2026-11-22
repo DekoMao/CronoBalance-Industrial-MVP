@@ -1,0 +1,11 @@
+{
+  "name": "CronoBalance Industrial",
+  "short_name": "CronoBalance",
+  "description": "Cronoanálise e balanceamento de linhas industriais · MVP 0.2",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f6f8",
+  "theme_color": "#103653",
+  "icons": [{ "src": "assets/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
