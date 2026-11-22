@@ -67,6 +67,7 @@ async function attach(){
   const callback=new URLSearchParams(location.search);
   if(callback.has('code')&&userManager){await userManager.signinCallback();history.replaceState(null,'',import.meta.env.BASE_URL)}
   token=await accessToken();
+  userManager?.events.addUserLoaded(user=>{token=user.access_token;schedule(0)});
   if(!token)return;
   let cached:Account|null=null;
   try{cached=JSON.parse(sessionStorage.getItem(authCache)??'null')}catch{}
@@ -99,7 +100,7 @@ export async function openStore(seed:()=>any[],onRemote:(p:Portfolio)=>void,onSt
   }
   persisted=structuredClone(p);
   window.addEventListener('online',()=>schedule(0));window.addEventListener('offline',()=>state(account?'Offline · salvo localmente':'Salvo localmente'));
-  if(account) schedule(0);else state('Salvo localmente');
+  if(account){schedule(0);window.setInterval(()=>{if(document.visibilityState==='visible'&&navigator.onLine&&!clash)void sync()},30000)}else state('Salvo localmente');
   return p;
 }
 function row(sheet:Sheet,base:Sheet|null,etag:string,dirty:boolean):Row{return {id:sheet.id,sheet,base,etag,dirty,removed:false,mutation:uid(),stamp:Date.now()}}
@@ -183,7 +184,7 @@ async function flush(){
     }
     for(const l of all){if(l.base&&!l.dirty&&!listed.some(r=>r.id===l.id))await db.transaction('rw',db.rows,async()=>{if(!(await db.rows.get(l.id))?.dirty)await db.rows.delete(l.id)})}
     await refreshScreen();
-    const pending=(await db.rows.toArray()).some(r=>r.dirty);attempts=0;state(pending?'Alterações pendentes':'Sincronizado na nuvem');if(pending)schedule(50);
+    const rows=await db.rows.toArray(),pending=rows.some(r=>r.dirty);attempts=0;state(pending?'Alterações pendentes':(rows.some(r=>r.base)?'Sincronizado na nuvem':'Rascunho local'));if(pending)schedule(50);
   }catch(e){
     const stop=e instanceof ApiError&&[400,401,403,404,422].includes(e.status);
     state(stop?'Sincronização bloqueada · '+(e as Error).message:'Offline · alterações preservadas');
