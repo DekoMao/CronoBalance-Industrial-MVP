@@ -9,3 +9,7 @@ Thumbs.db
 **/*.py[cod]
 **/*.tsbuildinfo
 backend/cronobalance.db
+
+frontend/test-results/
+frontend/playwright-report/
+backend/tests/cronobalance-test.db

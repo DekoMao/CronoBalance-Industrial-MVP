@@ -1,6 +1,6 @@
 {
   "name": "cronobalance-industrial",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "description": "Cronoanálise industrial local-first com front-end web e API corporativa",
   "scripts": {

@@ -1,111 +1,83 @@
 # CronoBalance Industrial
 
-Aplicação PWA de cronoanálise e balanceamento de linhas, evoluída do MVP local-first para uma arquitetura web com front-end offline, API corporativa, PostgreSQL, revisões, auditoria e solver CP-SAT.
+Aplicação de cronoanálise e balanceamento para engenharia de processos. O engenheiro mede e edita elementos de trabalho, testa a redistribuição entre postos e compara capacidade, mão de obra e custo operacional. O gestor pode consultar revisões e aprovar cenários na instalação corporativa.
 
-## Acesso publicado
+**[Abrir o painel no GitHub Pages](https://dekomao.github.io/CronoBalance-Industrial-MVP/)** · [Especificação corporativa](docs/SDD-corporativo.md) · [Especificação da interface e das simulações](docs/SDD-v2.md) · [Execuções dos testes e publicação](../../actions/workflows/deploy-pages.yml)
 
-A interface está publicada no GitHub Pages: <https://dekomao.github.io/CronoBalance-Industrial-MVP/>. O Pages hospeda a interface estática; por padrão ela funciona local-first no navegador e **não sincroniza com uma nuvem**. A sincronização corporativa exige API acessível por HTTPS, autenticação OIDC e variáveis de ambiente de implantação configuradas. A URL pública não deve receber dados industriais confidenciais.
+## Onde os dados ficam
 
-## O que está implementado
+| Instalação | Persistência | Acesso |
+| --- | --- | --- |
+| GitHub Pages e PWA | IndexedDB no navegador. A PWA armazena a interface para reabertura offline depois do primeiro carregamento completo. | Abra a URL acima. O botão de estado informa **Salvo localmente**. |
+| Arquivo HTML portátil | Uma cópia do portfólio fica incorporada ao arquivo no momento da exportação. Edições posteriores ficam no navegador. | No menu lateral, escolha **Baixar Projeto (.html)**. Abra o arquivo em Chrome ou Edge. Exporte novamente para transportar alterações. |
+| Instalação local com Docker | API FastAPI, PostgreSQL em volume persistente e cache IndexedDB no cliente. | Front-end em `http://localhost:4173`. Documentação interativa da API em `http://localhost:8000/docs`. |
+| Instalação corporativa | Uma API HTTPS compartilhada, PostgreSQL e login OIDC. A API aplica os perfis e o isolamento por organização. | Configure a implantação abaixo. A indicação **Sincronizado na nuvem** depende da sessão autenticada e da fila confirmada pelo servidor. |
 
-- Interface React + TypeScript responsiva, PWA instalável, tema claro/escuro e gráficos SVG responsivos, seguindo a identidade industrial navy/dourado e o layout de referência.
-- Persistência local IndexedDB por Dexie, fila de alterações offline e estado de sincronização/conflito.
-- API REST FastAPI com PostgreSQL, isolamento por organização, papéis admin/engenheiro/visualizador, autenticação OIDC, ETags/If-Match, deduplicação de mutações em lote, revisões e auditoria.
-- Entidades normalizadas para organização, usuário, estudo, revisão, área, elemento de trabalho, posto, alocação, equipamento fixo, precedência e auditoria.
-- Edição em lote dos elementos, importação/migração JSON v1/v2, exportação JSON/CSV/XLSX e snapshots versionados.
-- Balanceador CP-SAT que respeita precedência DAG, equipamento fixo, exceções ergonômicas aprovadas, quantidade de postos e limite de ciclo/Takt.
-- Docker Compose com PostgreSQL, migração Alembic, API e front-end para execução local em rede.
+## Verificar a linha de montagem
 
-## Regras de cálculo
+Abra **Linha de Montagem - Produto A**. O estudo de demonstração tem 6 operações, 15 elementos e 10 relações de precedência. Use **+ mostrar detalhes** em Recebimento para editar um elemento.
 
-- Tempo do elemento: `VA + NVA` para cada cenário.
-- Carga do posto: soma dos elementos alocados no posto.
-- Ciclo da linha: maior carga entre os postos; esse posto é o gargalo.
-- Takt: tempo disponível por turno dividido pela demanda por turno. Demanda zero torna o Takt não avaliável.
-- Capacidade teórica: tempo disponível por turno dividido pelo ciclo; ciclo zero torna a capacidade não avaliável.
-- CMO por peça: custo da equipe por turno dividido pela capacidade teórica. O custo operacional alocado por área é apresentado separadamente e não entra no CMO.
-- Economia mensal estimada: `(CMO atual − CMO futuro) × produção base/dia × dias produtivos/mês`.
-- Totais, gráficos, ciclo e KPIs são derivados dos elementos; não são editáveis diretamente.
+| Indicador derivado | Atual | Futuro |
+| --- | ---: | ---: |
+| Ciclo da linha | 256,3 s · F3 | 96,0 s · F1 a F5 empatados |
+| Capacidade teórica | 105,35 un/turno | 281,25 un/turno |
+| Custo da equipe | R$ 1.710,00/turno | R$ 1.425,00/turno |
+| Mão de obra direta | R$ 16,23/peça | R$ 5,07/peça |
+| Operacional alocado | R$ 8,04/peça | R$ 5,63/peça |
 
-## Executar localmente com Docker
+Com 27.000 s/turno, demanda de 180 unidades, OEE planejado de 100% e sazonalidade de 0%, o Takt é 150 s. A economia projetada de mão de obra é **R$ 8.646,69 por mês** com 35,2 unidades/dia e 22 dias. O painel executivo arredonda a apresentação para R$ 8.647. A base de cálculo mantém a precisão antes do arredondamento. O CAPEX demonstrativo de R$ 15.000 resulta em payback de 1,73 mês e ROI anual de +591,7%. São hipóteses até o registro da evidência de medição.
 
-Requer Docker Desktop com Compose v2. Na raiz do repositório:
+- Altere o NVA futuro de **Separar e identificar material** de 4 para 58 s. F1 chega ao Takt. Com 59 s, F1 chega a 151 s e o painel indica excesso de 1 s. Use **Desfazer** para recuperar a edição.
+- Alterne **Futuro**, **Yamazumi**, **Atual** e **Atual × Futuro**. O gráfico usa os mesmos elementos da matriz e das cargas dos postos.
+- Use **Regras** para examinar o DAG e **Restrições e evidências** para associar equipamentos, zonas ergonômicas e referências de validação. Arraste uma tarefa ou altere seu seletor de posto na matriz. Um posto ocupado bloqueia a exclusão.
+- **Rebalancear** propõe alocações por peso posicional (RPW). **Otimizar** avalia ciclo e índice de suavidade por recozimento simulado. A proposta apresenta os postos de origem e destino antes de aplicar. O solver CP-SAT está no painel de sincronização das instalações com API.
+- O cronômetro registra voltas, média, desvio padrão e amostragem. O modo de câmera requer permissão do navegador e conta a sequência das três zonas. A bancada simulada funciona sem câmera.
+- O copiloto local identifica oportunidades de redução de NVA e emite um parecer. O envio opcional de indicadores a um gateway generativo exige a ação explícita do operador. A chave do gateway fica em memória durante a sessão.
+- Para intercâmbio, use JSON do portfólio, CSV com BOM e separador ponto e vírgula, Excel XLSX, impressão/PDF ou HTML autônomo. O snapshot no fragmento do link inclui dados do estudo e pode ser lido por quem receber o link.
 
-```bash
-cp .env.example .env
+## Executar em Windows, Linux ou macOS
+
+Com Git e Docker Compose v2 instalados, execute na pasta do repositório:
+
+```sh
+git clone https://github.com/DekoMao/CronoBalance-Industrial-MVP.git
+cd CronoBalance-Industrial-MVP
 docker compose up --build
 ```
 
-Acesse `http://localhost:4173`. A API fica em `http://localhost:8000`; documentação OpenAPI em `http://localhost:8000/api/v1/openapi.json`. O perfil local cria uma organização e um usuário de demonstração e usa o token indicado em `.env.example`. Esse token é exclusivamente local: defina `APP_ENV=production`, OIDC e segredos próprios antes de expor o serviço fora da máquina/rede confiável.
+No Windows, `start-local.bat` inicia a mesma instalação. No Linux ou WSL, use `./start-local.sh`. Os serviços de demonstração escutam no loopback. A API aplica as migrações no início. `docker compose down` encerra a instalação e conserva o volume do banco. A raiz do projeto também possui um Dockerfile para hospedar somente o front-end.
 
-Para parar sem remover os dados do banco: `docker compose down`. Para apagar permanentemente o volume PostgreSQL de demonstração: `docker compose down -v`.
+Para trabalhar apenas no front-end com Node 22:
 
-## Executar somente o front-end
-
-Requer Node.js 20+:
-
-```bash
+```sh
 cd frontend
 npm ci
 npm run dev
 ```
 
-Acesse `http://localhost:5173`. Sem `VITE_API_BASE_URL`, os dados ficam neste navegador/dispositivo; a instalação PWA e a fila local não criam por si só uma nuvem compartilhada.
+O servidor de desenvolvimento usa a porta 5173 por padrão. Para testar o service worker e a exportação HTML, execute `npm run build` seguido de `npm run preview`. O build inclui fonte, estilos, biblioteca de planilhas e ícones com a distribuição.
 
-## Configuração corporativa
+## Implantar a API corporativa
 
-Copie `.env.example` para `.env` e configure valores reais antes de uma implantação online:
+1. Provisione PostgreSQL, configure backup e forneça `DATABASE_URL` ao contêiner construído a partir de `backend/Dockerfile`. O formato com o driver do projeto é `postgresql+psycopg://usuario:senha@host:5432/banco`. Aplique `alembic upgrade head` antes de iniciar múltiplas réplicas.
+2. Configure `APP_ENV=production`, `AUTO_CREATE_SCHEMA=false`, `OIDC_ISSUER`, `OIDC_AUDIENCE` e, opcionalmente, `OIDC_JWKS_URL`. Em produção a API exige um token do emissor configurado. Publique atrás de HTTPS. Use `/api/v1/health/live` e `/api/v1/health/ready` para monitorar o processo e a conexão.
+3. No provedor OIDC, cadastre o front-end como cliente público de Authorization Code com PKCE e a URL exata da aplicação como retorno, com barra final. Cadastre em PostgreSQL a organização, o usuário pelo `sub` e seu vínculo em `organization_memberships`. Os papéis são `viewer`, `engineer` e `admin`.
+4. Informe a origem HTTPS do front-end em `CORS_ORIGINS`. Para Pages, a origem é `https://dekomao.github.io`. No repositório, defina as variáveis de Actions `VITE_API_BASE_URL`, `VITE_OIDC_AUTHORITY` e `VITE_OIDC_CLIENT_ID`. Para uma instalação com usuários vinculados a múltiplas organizações, defina também `VITE_ORGANIZATION_ID` para a organização da instalação. Reexecute o workflow de publicação.
+5. Entre pelo botão de sincronização. Uma edição sincronizada produz uma revisão com ETag e auditoria. A fila do IndexedDB conserva as alterações durante uma desconexão. Edições em campos independentes são conciliadas. Em conflito no mesmo campo, o engenheiro pode preservar uma cópia local, selecionar a revisão remota ou manter sua edição sobre a revisão atual.
 
-| Variável | Finalidade |
-|---|---|
-| `POSTGRES_PASSWORD` | Senha forte do PostgreSQL |
-| `APP_ENV` | `production` desativa autenticação de demonstração |
-| `OIDC_ISSUER` | Emissor OIDC cujo endpoint JWKS valida os tokens da API |
-| `OIDC_AUDIENCE` | Audiência aceita pela API |
-| `OIDC_JWKS_URL` | URL JWKS opcional; vazia usa `jwks_uri` do discovery OIDC |
-| `VITE_API_BASE_URL` | URL HTTPS da API incluída no build do front-end |
-| `CORS_ORIGINS` | Origens HTTPS permitidas pela API, separadas por vírgula |
-| `VITE_OIDC_AUTHORITY` | Autoridade OIDC usada pelo cliente web |
-| `VITE_OIDC_CLIENT_ID` | Client ID público do cliente OIDC |
+Detalhes de tipos, eventos, fórmulas, esquema e cenários Given/When/Then estão nos dois SDDs em `docs/`. Os contratos publicados pela API em execução estão em `/api/v1/openapi.json`.
 
-O usuário OIDC precisa ser provisionado em `users` e associado a uma organização em `organization_memberships`. A API não cria associações corporativas automaticamente. O cliente OIDC deve permitir Authorization Code + PKCE e usar a URL de callback `${origem}/auth/callback`.
+## Verificação
 
-O deployment do Pages desta branch é público e sem API configurada. Para sincronização multiusuário, hospede `api` e PostgreSQL em infraestrutura gerenciada pela organização e configure as variáveis de build/ambiente descritas acima.
-
-## API v1
-
-| Método e rota | Contrato |
-|---|---|
-| `GET /api/v1/health/live` | Liveness |
-| `GET /api/v1/health/ready` | Conectividade com PostgreSQL |
-| `GET /api/v1/studies` | Lista paginada por organização |
-| `POST /api/v1/studies` | Cria estudo e primeira revisão |
-| `GET /api/v1/studies/{id}` | Estudo, derivações e `ETag` |
-| `PATCH /api/v1/studies/{id}/elements/batch` | Atualização em lote; exige `If-Match` e `clientMutationId` |
-| `PUT /api/v1/studies/{id}/precedences` | Substitui o DAG após validar ciclos |
-| `POST /api/v1/studies/{id}/optimize` | Gera proposta CP-SAT para uma revisão |
-| `POST /api/v1/studies/{id}/optimization-proposals/apply` | Aplica proposta validada com controle de versão |
-| `POST /api/v1/studies/import-legacy` | Importa JSON legado v1/v2 (máx. 5 MiB, 500 elementos, 100 áreas e 20 postos/cenário) |
-| `GET /api/v1/studies/{id}/revisions` | Histórico de revisões |
-| `GET /api/v1/studies/{id}/revisions/{n}` | Snapshot imutável da revisão |
-| `POST /api/v1/studies/{id}/approve` | Aprovação por perfil admin com comentário obrigatório |
-| `GET /api/v1/studies/{id}/audit` | Trilha de auditoria recente |
-
-Mutação concorrente com ETag desatualizada retorna HTTP 412. Envie o ETag retornado pelo servidor em `If-Match`; não tente resolver conflitos sobrescrevendo silenciosamente a revisão remota.
-
-## Verificações
-
-```bash
-cd frontend && npm ci && npm run build
-cd ../backend && python -m pip install -r requirements.txt -r requirements-dev.txt && pytest
+```sh
+cd backend
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest -q
+cd ../frontend
+npm ci
+npm run build
+npx playwright install chromium
+npm test
 ```
 
-A suíte de backend cobre cálculos, DAG, alteração de NVA e gargalo, semáforo de Takt, bloqueio de posto ocupado, rebalanceamento com precedência, importação legada e conflito de revisão. O build de produção é executado também pelo GitHub Actions antes da publicação.
-
-## Limites de prontidão
-
-O repositório entrega uma base executável localmente e publicável como front-end estático. A operação corporativa compartilhada depende de provisionamento OIDC, segredo real de PostgreSQL, API HTTPS e hospedagem de backend. Antes de tratar propostas de balanceamento como padrão aprovado, valide os dados e as restrições da linha com Engenharia, Segurança, Ergonomia e responsáveis pelo processo. O solver otimiza a alocação matemática declarada; não certifica segurança ou viabilidade física por conta própria.
-
-## Licença
-
-Consulte a licença definida pelo repositório antes de redistribuir ou operar como produto comercial.
+O workflow executa os testes da API em SQLite e PostgreSQL 16, aplica as migrações, constrói o pacote sob o subcaminho do Pages e executa o Playwright em Chromium. O relatório de testes e as capturas desktop, tablet e mobile ficam no artefato **verificacao-industrial**. O deploy do fluxo depende da aprovação desses jobs. Para cronometria de campo, valide a frequência de amostragem, o dispositivo, as condições de captura e a evidência antes de aprovar o ganho.

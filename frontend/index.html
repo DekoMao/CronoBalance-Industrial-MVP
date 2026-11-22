@@ -1,13 +1,1352 @@
-<!doctype html>
-<html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#103653" />
-    <meta name="description" content="Cronoanálise e balanceamento de linhas industriais com cálculo rastreável, operação offline e comparação de cenários." />
-    <link rel="icon" href="%BASE_URL%assets/icon.svg" type="image/svg+xml" />
-    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
-    <title>CronoBalance Industrial</title>
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#103653" />
+  <title>Cronoanálise e Balanceamento de Linhas — CronoBalance Industrial SDD v2.0 AI-Powered</title>
+
+  <link rel="icon" type="image/png" href="%BASE_URL%assets/icon-192.png">
+  <link rel="apple-touch-icon" href="%BASE_URL%assets/icon-192.png">
+  <link rel="manifest" href="%BASE_URL%manifest.webmanifest">
+  <meta name="description" content="Estudos industriais de cronoanálise, precedência, Takt e viabilidade financeira.">
+  <link rel="stylesheet" href="/src/workspace/base.css">
   </head>
-  <body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body>
-</html>
+<body class="cb-loading min-h-screen antialiased selection:bg-gold/30 selection:text-white">
+<div id="boot-state" role="status">Abrindo o estudo industrial…</div>
+  <!-- Mobile Drawer Backdrop -->
+  <div id="mobile-sidebar-backdrop" onclick="toggleMobileSidebar(false)" class="hidden fixed inset-0 z-40 bg-black/70 backdrop-blur-xs lg:hidden"></div>
+
+  <!-- Main Application Shell -->
+  <div class="min-h-screen flex bg-obsidian-bg">
+
+    <!-- LATERAL COMMAND SIDEBAR -->
+    <aside id="app-sidebar" aria-label="Menu Lateral de Ferramentas"
+           class="fixed lg:sticky top-0 left-0 z-50 lg:z-30 h-screen shrink-0 -translate-x-full lg:translate-x-0 bg-[#0D1724] border-r border-obsidian-border flex flex-col justify-between select-none no-print shadow-2xl lg:shadow-none">
+
+      <!-- Sidebar Top -->
+      <div class="sidebar-header-row px-3.5 py-3.5 bg-gradient-to-r from-[#0B263D] to-[#103653] border-b border-sky-400/20 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2.5 min-w-0">
+          <div class="w-9 h-9 rounded-xl bg-[#081C2E] border border-gold/45 flex items-center justify-center shrink-0 shadow-md">
+            <img id="brand-icon" src="/src/workspace/brand.png" alt="CronoBalance" width="34" height="34" class="rounded-lg">
+          </div>
+          <div class="sidebar-brand-copy min-w-0">
+            <div class="text-xs font-extrabold text-white tracking-tight truncate">CronoBalance</div>
+            <div class="text-[10px] font-semibold text-gold/90 truncate">Industrial • SDD v2.0 AI</div>
+          </div>
+        </div>
+
+        <button type="button" id="sidebar-collapse-btn" onclick="toggleSidebar()"
+                class="hidden lg:flex w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 items-center justify-center text-sky-200 hover:text-gold transition cursor-pointer shrink-0"
+                title="Recolher / Expandir barra lateral">
+          <svg id="sidebar-collapse-icon" class="w-3.5 h-3.5 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+        </button>
+
+        <button type="button" onclick="toggleMobileSidebar(false)"
+                class="lg:hidden w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center text-slate-200 text-sm">
+          ×
+        </button>
+      </div>
+
+      <!-- Sidebar Navigation Groups -->
+      <nav class="flex-1 overflow-y-auto custom-scroll px-2.5 py-3 space-y-4">
+
+        <!-- Group 1: Portfólio de Estudos -->
+        <div class="space-y-1">
+          <div class="sidebar-section-title px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Portfólio de Estudos
+          </div>
+
+          <button type="button" onclick="createNewStudy(); toggleMobileSidebar(false)" title="Criar novo estudo de linha"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-sky-500/15 hover:bg-sky-500/25 border border-sky-400/35 text-sky-100 text-xs font-bold transition cursor-pointer">
+            <svg class="w-4 h-4 text-sky-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M12 4v16m8-8H4"/></svg>
+            <span class="sidebar-label truncate">Novo Estudo</span>
+          </button>
+
+          <button type="button" onclick="duplicateActiveStudy(); toggleMobileSidebar(false)" title="Duplicar estudo atual para simular cenário"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-gold hover:text-[#ffd054] text-xs font-semibold transition cursor-pointer">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="11" height="11" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            <span class="sidebar-label truncate">Duplicar Cenário</span>
+          </button>
+
+          <button type="button" onclick="renameActiveStudy(); toggleMobileSidebar(false)" title="Renomear estudo ativo"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/></svg>
+            <span class="sidebar-label truncate">Renomear Estudo</span>
+          </button>
+
+          <button type="button" onclick="openCompareModal(); toggleMobileSidebar(false)" title="Comparar dois estudos lado a lado"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-indigo-500/20 text-indigo-200 hover:text-white text-xs font-semibold transition cursor-pointer">
+            <svg class="w-4 h-4 text-indigo-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/></svg>
+            <span class="sidebar-label truncate">Comparar Cenários</span>
+          </button>
+
+          <button type="button" id="delete-study-btn" onclick="openDeleteStudyModal(); toggleMobileSidebar(false)" title="Selecionar e excluir estudo do portfólio"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-rose-500/15 text-rose-300 hover:text-rose-200 text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            <span class="sidebar-label truncate">Excluir Estudo</span>
+          </button>
+        </div>
+
+        <!-- Group 2: Engenharia & Chão de Fábrica -->
+        <div class="space-y-1 pt-2 border-t border-obsidian-border/80">
+          <div class="sidebar-section-title px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Engenharia & Fábrica
+          </div>
+
+          <button type="button" onclick="openAiCopilotModal(); toggleMobileSidebar(false)" title="Copiloto Kaizen I.A., Diagnóstico NVA e Parecer Executivo"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-gradient-to-r from-violet-600/25 to-sky-500/20 hover:from-violet-600/35 hover:to-sky-500/30 border border-violet-400/45 text-violet-100 text-xs font-bold shadow-xs transition cursor-pointer">
+            <span class="text-sm shrink-0">✨</span>
+            <span class="sidebar-label truncate">Copiloto I.A. (Kaizen)</span>
+          </button>
+
+          <button type="button" onclick="openStopwatchModal(); toggleMobileSidebar(false)" title="Cronômetro digital com visão computacional e cálculo estatístico N"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-sky-200 hover:text-white text-xs font-semibold transition cursor-pointer">
+            <svg class="w-4 h-4 text-gold shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4l2.5 1.5M9 2h6m-3 0v3"/></svg>
+            <span class="sidebar-label truncate">Cronometrar Tempos</span>
+          </button>
+
+          <button type="button" onclick="togglePremisesDrawer(); toggleMobileSidebar(false)" title="Configurar Turno, OEE, CAPEX e Governança"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>
+            <span class="sidebar-label truncate">Premissas, OEE & CAPEX</span>
+          </button>
+
+          <button type="button" onclick="toggleGuideDrawer(); toggleMobileSidebar(false)" title="Guia Metodológico de Cronoanálise"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-sky-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>
+            <span class="sidebar-label truncate">Guia Metodológico</span>
+          </button>
+        </div>
+
+        <div class="space-y-1 pt-2 border-t border-obsidian-border/80">
+          <button class="sidebar-item-btn cb-nav" title="Ergonomia, equipamentos e validação" onclick="openQualityPanel();toggleMobileSidebar(false)">⚙ <span class="sidebar-label">Restrições e evidências</span></button>
+          <button class="sidebar-item-btn cb-nav" title="Alternar tema claro e escuro" onclick="toggleTheme()">◐ <span class="sidebar-label">Alternar tema</span></button></div>
+          <!-- Group 3: Governança & Compartilhamento -->
+        <div class="space-y-1 pt-2 border-t border-obsidian-border/80">
+          <div class="sidebar-section-title px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Governança & Nuvem
+          </div>
+
+          <button type="button" onclick="openAuditModal(); toggleMobileSidebar(false)" title="Ver trilha de auditoria e revisões"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-amber-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+            <span class="sidebar-label truncate">Trilha de Auditoria</span>
+          </button>
+
+          <button type="button" onclick="openSharePwaModal(); toggleMobileSidebar(false)" title="Compartilhar link do estudo ou instalar PWA offline"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-emerald-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"/></svg>
+            <span class="sidebar-label truncate">Compartilhar / PWA</span>
+          </button>
+        </div>
+
+        <!-- Group 4: Exportação & Backup -->
+        <div class="space-y-1 pt-2 border-t border-obsidian-border/80">
+          <div class="sidebar-section-title px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            Dados & Exportação
+          </div>
+
+          <button type="button" onclick="downloadStandaloneProject(); toggleMobileSidebar(false)" title="Baixar arquivo HTML completo do projeto"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl bg-gold hover:bg-[#ffc83b] text-[#0B1E2E] text-xs font-extrabold shadow-sm transition cursor-pointer">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V3"/></svg>
+            <span class="sidebar-label truncate">Baixar Projeto (.html)</span>
+          </button>
+
+          <button type="button" onclick="document.getElementById('json-import-input').click(); toggleMobileSidebar(false)" title="Importar backup JSON ou dados fictícios"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-sky-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+            <span class="sidebar-label truncate">Importar JSON</span>
+          </button>
+
+          <button type="button" onclick="exportStudyJSON(); toggleMobileSidebar(false)" title="Exportar o portfólio completo em JSON"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-200 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-sky-300 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+            <span class="sidebar-label truncate">Exportar JSON</span>
+          </button>
+
+          <button type="button" onclick="exportStudyCSV(); toggleMobileSidebar(false)" title="Exportar planilha CSV / Excel"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-emerald-300 hover:text-emerald-200 text-xs font-semibold transition cursor-pointer">
+            <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            <span class="sidebar-label truncate">Exportar CSV</span>
+          </button><button class="sidebar-item-btn cb-nav text-emerald-300" title="Exportar planilha Excel XLSX" onclick="exportWorkbook();toggleMobileSidebar(false)">▦ <span class="sidebar-label">Exportar Excel (.xlsx)</span></button>
+
+          <button type="button" onclick="window.print()" title="Imprimir ou gerar PDF executivo"
+                  class="sidebar-item-btn w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-obsidian-inner text-slate-300 hover:text-white text-xs font-medium transition cursor-pointer">
+            <svg class="w-4 h-4 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/></svg>
+            <span class="sidebar-label truncate">Imprimir / PDF</span>
+          </button>
+
+          <input id="json-import-input" type="file" accept=".json,application/json" class="hidden" onchange="importStudyJSON(event)" />
+        </div>
+      </nav>
+
+      <!-- Sidebar Footer -->
+      <div class="p-3 border-t border-obsidian-border bg-[#0A121D]">
+        <div class="sidebar-footer-copy text-[10px] text-slate-400 leading-relaxed">
+          <div class="font-bold text-slate-300">Arquitetura Offline-First</div>
+          <div>Dados salvos automaticamente neste dispositivo.</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- RIGHT MAIN WORKSPACE COLUMN -->
+    <div class="flex-1 min-w-0 flex flex-col">
+
+      <!-- STREAMLINED TOP CONTEXT HEADER -->
+      <header class="sticky top-0 z-20 bg-gradient-to-r from-[#0E2F4A] via-[#103653] to-[#134266] border-b border-sky-400/20 px-3 sm:px-5 py-2.5 shadow-lg">
+        <div class="max-w-[1480px] mx-auto flex flex-wrap items-center justify-between gap-3">
+
+          <!-- Left: Mobile Drawer Trigger + Title + Active Study Switcher -->
+          <div class="flex flex-wrap items-center gap-3 min-w-0">
+            <button type="button" onclick="toggleMobileSidebar(true)" aria-label="Abrir menu lateral"
+                    class="lg:hidden p-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/15 text-white transition cursor-pointer">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h1 class="text-base sm:text-lg font-bold tracking-tight text-white truncate">
+                  Cronoanálise e Balanceamento de Linhas
+                </h1>
+                <span class="hidden sm:inline-block text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-gold/20 text-gold border border-gold/40">SDD v2.0 AI</span>
+              </div>
+            </div>
+
+            <span class="text-sky-300/30 hidden md:inline">|</span>
+
+            <!-- High-Contrast Study Selector Dropdown -->
+            <div id="study-picker-wrapper" class="relative">
+              <button type="button" id="study-picker-trigger" onclick="toggleStudyPickerMenu()" aria-haspopup="listbox" aria-expanded="false"
+                      class="inline-flex items-center gap-2 bg-[#0B1E30] hover:bg-[#102940] border border-gold/45 hover:border-gold rounded-xl px-3 py-1.5 shadow-inner transition cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-gold shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+                <span class="text-[10px] font-bold uppercase tracking-wider text-sky-300/80 hidden sm:inline">Estudo Ativo:</span>
+                <span id="study-picker-label" class="text-xs font-extrabold text-slate-100 max-w-[180px] sm:max-w-[260px] truncate">Linha de Montagem - Produto A</span>
+                <svg id="study-picker-chevron" class="w-3.5 h-3.5 text-gold shrink-0 transition-transform duration-150" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.4" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+
+              <!-- Rich Dark-Obsidian Study Menu -->
+              <div id="study-picker-menu" role="listbox"
+                   class="hidden absolute left-0 mt-1.5 w-80 sm:w-96 z-40 bg-[#0F1B2B] border border-gold/45 rounded-2xl shadow-2xl overflow-hidden">
+                <div class="px-3.5 py-2 bg-[#0A1420] border-b border-obsidian-border flex items-center justify-between text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  <span>Portfólio de Estudos</span>
+                  <span id="study-picker-count" class="text-gold font-mono">2 estudos</span>
+                </div>
+                <div id="study-picker-list" class="max-h-60 overflow-y-auto custom-scroll divide-y divide-obsidian-border/70"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right: Quick AI Copilot, Stopwatch CTA & Cloud Sync Pill -->
+          <div class="flex items-center gap-2 no-print">
+            <button type="button" onclick="openAiCopilotModal()" class="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-violet-500/20 hover:bg-violet-500/30 border border-violet-400/45 text-violet-100 text-xs font-bold shadow-sm transition cursor-pointer" title="Abrir Copiloto Kaizen I.A.">
+              <span>✨</span>
+              <span>Copiloto I.A.</span>
+            </button>
+
+            <button type="button" onclick="openStopwatchModal()" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/45 text-sky-100 text-xs font-bold shadow-sm transition cursor-pointer" title="Abrir cronômetro digital e visão computacional">
+              <svg class="w-3.5 h-3.5 text-gold" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v4l2.5 1.5M9 2h6m-3 0v3"/></svg>
+              <span>Cronometrar</span>
+            </button>
+
+            <button type="button" id="sync-status-btn" onclick="openCloudPanel()" class="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#133A32] hover:bg-[#17483E] border border-emerald-400/40 text-emerald-300 text-xs font-semibold transition cursor-pointer" title="Sincronização, acesso e revisões">
+              <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span id="sync-status-label">Salvo localmente</span>
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <!-- MAIN ANALYTICAL CONTENT -->
+      <main class="flex-1 max-w-[1480px] w-full mx-auto px-3 sm:px-5 py-4 space-y-4">
+
+    <!-- COLLAPSIBLE METHODOLOGICAL GUIDE DRAWER -->
+    <section id="guide-drawer" class="hidden bg-obsidian-card border border-sky-400/25 rounded-2xl p-4 sm:p-5 shadow-lg">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3 mb-4">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Engenharia de Manufatura • Estudo de Tempos</span>
+          <h2 class="text-base font-bold text-white">Guia Metodológico: Cronoanálise e Balanceamento de Linhas</h2>
+        </div>
+        <button type="button" onclick="toggleGuideDrawer()" class="text-xs px-2.5 py-1 rounded-lg bg-obsidian-inner hover:bg-slate-700 text-slate-300">Fechar ×</button>
+      </div>
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+        <div class="lg:col-span-5 bg-obsidian-inner/80 border border-obsidian-border rounded-xl p-4 space-y-2.5">
+          <h3 class="text-sm font-bold text-sky-300">O que é?</h3>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <strong class="text-white">Cronoanálise:</strong> medição e análise sistemática dos tempos das atividades para definir o tempo padrão e separar atividades que agregam valor (<span class="text-sky-300 font-semibold">VA</span>) das perdas (<span class="text-amber-300 font-semibold">NVA</span>).
+          </p>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            <strong class="text-white">Balanceamento de linha:</strong> distribuição uniforme das tarefas entre postos de trabalho (<span class="font-mono text-gold">F1..Fn</span>) respeitando precedências técnicas para eliminar gargalos, reduzir perdas e diminuir o custo unitário.
+          </p>
+        </div>
+        <div class="lg:col-span-7 bg-obsidian-inner/80 border border-obsidian-border rounded-xl p-4">
+          <h3 class="text-sm font-bold text-sky-300 mb-3">Como aplicar em 5 etapas</h3>
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-2">
+            <div class="bg-obsidian-slot border border-obsidian-border rounded-lg p-2.5">
+              <span class="text-xs font-extrabold text-gold">1. Medir</span>
+              <p class="text-[11px] text-slate-400 mt-0.5">Cronoanálise dos elementos</p>
+            </div>
+            <div class="bg-obsidian-slot border border-obsidian-border rounded-lg p-2.5">
+              <span class="text-xs font-extrabold text-gold">2. Analisar</span>
+              <p class="text-[11px] text-slate-400 mt-0.5">Separar tempo VA × NVA</p>
+            </div>
+            <div class="bg-obsidian-slot border border-obsidian-border rounded-lg p-2.5">
+              <span class="text-xs font-extrabold text-gold">3. Balancear</span>
+              <p class="text-[11px] text-slate-400 mt-0.5">Redistribuir tarefas RPW / IA</p>
+            </div>
+            <div class="bg-obsidian-slot border border-obsidian-border rounded-lg p-2.5">
+              <span class="text-xs font-extrabold text-gold">4. Comparar</span>
+              <p class="text-[11px] text-slate-400 mt-0.5">Tempo, capacidade e custo</p>
+            </div>
+            <div class="bg-obsidian-slot border border-obsidian-border rounded-lg p-2.5">
+              <span class="text-xs font-extrabold text-gold">5. Realizar</span>
+              <p class="text-[11px] text-slate-400 mt-0.5">Ganho operacional e ROI</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COLLAPSIBLE SHIFT, OEE, CAPEX & GOVERNANCE DRAWER -->
+    <section id="premises-drawer" class="hidden bg-obsidian-card border border-gold/30 rounded-2xl p-4 shadow-lg">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3.5">
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Tempo Disponível / Turno (s)</label>
+            <div class="num-stepper mt-1">
+              <input id="input-shift-seconds" type="number" min="60" step="60" onchange="updateParam('shiftSeconds', this.value)" class="w-24 px-2.5 py-1.5 text-sm font-bold text-white" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-shift-seconds', 60)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-shift-seconds', -60)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Dias Produtivos / Mês</label>
+            <div class="num-stepper mt-1">
+              <input id="input-days" type="number" min="1" max="31" step="1" onchange="updateParam('days', this.value)" class="w-16 px-2.5 py-1.5 text-sm font-bold text-white" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-days', 1)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-days', -1)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">OEE Planejado (%)</label>
+            <div class="num-stepper mt-1">
+              <input id="input-oee" type="number" min="10" max="100" step="1" onchange="updateParam('oee', this.value)" class="w-20 px-2.5 py-1.5 text-sm font-bold text-gold" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-oee', 1)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-oee', -1)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">CAPEX Melhorias (R$)</label>
+            <div class="num-stepper mt-1">
+              <input id="input-capex" type="number" min="0" step="500" onchange="updateParam('capex', this.value)" class="w-24 px-2.5 py-1.5 text-sm font-bold text-emerald-300" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-capex', 500)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-capex', -500)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Engenheiro Responsável</label>
+            <input id="input-author" type="text" maxlength="50" onchange="updateParam('author', this.value)" class="mt-1 w-36 bg-obsidian-slot border border-obsidian-border focus:border-gold rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none" />
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400">Revisão</label>
+            <input id="input-revision" type="text" maxlength="16" onchange="updateParam('revision', this.value)" class="mt-1 w-20 bg-obsidian-slot border border-obsidian-border focus:border-gold rounded-lg px-2.5 py-1.5 text-xs font-mono font-bold text-sky-300 focus:outline-none" />
+          </div>
+          <div class="text-xs text-slate-300 bg-obsidian-inner px-3 py-2 rounded-xl border border-obsidian-border">
+            <span class="text-slate-400">Takt Time Efetivo:</span>
+            <strong id="premise-takt-readout" class="text-gold font-bold tabular-nums ml-1">150,0 s</strong>
+          </div>
+        </div>
+        <button type="button" onclick="resetDemoStudies()" class="text-xs font-semibold text-rose-300 hover:text-rose-200 px-3 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/30 transition">
+          Restaurar Dados Originais
+        </button>
+      </div>
+    </section>
+
+    <!-- 2. TOP 4 GOLD PARAMETER CARDS -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5" aria-label="Parâmetros do Estudo">
+      <!-- Card 1: Produto / Família -->
+      <div class="gold-card rounded-2xl px-4 py-3 flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <label for="input-product" class="block text-[11px] font-medium text-slate-400">Produto / família</label>
+          <input aria-label="Produto ou família" id="input-product" type="text" maxlength="60" onchange="updateParam('product', this.value)" class="w-full bg-transparent text-base font-bold text-white focus:outline-none truncate" />
+        </div>
+      </div>
+
+      <!-- Card 2: Demanda / Turno -->
+      <div class="gold-card rounded-2xl px-4 py-3 flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" stroke-width="2"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 7v5l3 3"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <label for="input-demand" class="block text-[11px] font-medium text-slate-400">Demanda / turno (un)</label>
+          <div class="flex items-center justify-between gap-2 mt-0.5">
+            <div class="num-stepper">
+              <input aria-label="Demanda por turno" id="input-demand" type="number" min="0" step="5" onchange="updateParam('demand', this.value)" class="w-16 px-2 py-0.5 text-base font-extrabold text-white" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-demand', 5)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-demand', -5)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+            <span id="card-takt-badge" class="text-[11px] font-semibold text-gold tabular-nums shrink-0">Takt 150,0s</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 3: Produção Base / Dia -->
+      <div class="gold-card rounded-2xl px-4 py-3 flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2" stroke-width="2"/><path stroke-linecap="round" stroke-width="2" d="M3 10h18M9 4v16"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <label for="input-daily-volume" class="block text-[11px] font-medium text-slate-400">Produção base / dia</label>
+          <div class="flex items-center justify-between gap-2 mt-0.5">
+            <div class="num-stepper">
+              <input id="input-daily-volume" type="number" min="0.1" step="0.5" onchange="updateParam('dailyVolume', this.value)" class="w-16 px-2 py-0.5 text-base font-extrabold text-white" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-daily-volume', 0.5)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-daily-volume', -0.5)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+            <span class="text-[11px] text-slate-400 shrink-0">un/dia</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card 4: Equipe Atual / Futura (R$/turno) -->
+      <div class="gold-card rounded-2xl px-4 py-3 flex items-center gap-3.5">
+        <div class="w-10 h-10 rounded-xl bg-gold/10 border border-gold/30 flex items-center justify-center text-gold shrink-0">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        </div>
+        <div class="min-w-0 flex-1">
+          <div class="flex items-center justify-between text-[11px] font-medium text-slate-400">
+            <span>Equipe Atual (R$)</span>
+            <span>Futura (R$)</span>
+          </div>
+          <div class="flex items-center justify-between gap-1.5 mt-0.5">
+            <div class="num-stepper">
+              <input id="input-labor-current" type="number" min="0" step="25" onchange="updateParam('laborCurrent', this.value)" class="w-14 px-1.5 py-0.5 text-sm font-extrabold text-white" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-labor-current', 25)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-labor-current', -25)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+            <span class="text-slate-500 text-xs">➜</span>
+            <div class="num-stepper">
+              <input id="input-labor-future" type="number" min="0" step="25" onchange="updateParam('laborFuture', this.value)" class="w-14 px-1.5 py-0.5 text-sm font-extrabold text-emerald-400" />
+              <div class="num-stepper-btns">
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-labor-future', 25)" aria-label="Aumentar">▲</button>
+                <button type="button" class="num-stepper-btn" onclick="stepInput('input-labor-future', -25)" aria-label="Diminuir">▼</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- WHAT-IF DEMAND SEASONALITY & PAYBACK BAR -->
+    <section class="bg-obsidian-card border border-obsidian-border rounded-2xl px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 shadow-md tabular-nums">
+      <div class="flex flex-wrap items-center gap-3 flex-1 min-w-[260px]">
+        <div class="flex items-center gap-1.5">
+          <span class="text-xs font-bold text-gold">⚡ Simulador Sazonalidade:</span>
+          <span id="seasonality-badge" class="px-2 py-0.5 rounded-md text-xs font-mono font-extrabold bg-obsidian-inner text-slate-200 border border-obsidian-border">0%</span>
+        </div>
+        <input aria-label="Sazonalidade da demanda" id="seasonality-slider" type="range" min="-30" max="50" step="5" value="0" oninput="updateSeasonality(this.value)" class="w-36 sm:w-48 accent-[#F4BA25] cursor-pointer" />
+        <button type="button" onclick="updateSeasonality(0)" class="px-2 py-0.5 rounded-md bg-obsidian-inner hover:bg-slate-700 border border-obsidian-border text-[10px] font-semibold text-slate-300 transition">
+          Reset 0%
+        </button>
+        <span class="text-xs text-slate-300">
+          Demanda Efetiva: <strong id="seasonality-demand-readout" class="text-white">180 un/turno</strong>
+          <span class="text-slate-500 mx-1">•</span>
+          Takt Simulado: <strong id="seasonality-takt-readout" class="text-gold">150,0 s</strong>
+        </span>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 text-xs">
+        <div class="px-2.5 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border">
+          <span class="text-slate-400">CAPEX:</span>
+          <strong id="strip-capex-val" class="text-white ml-1">R$ 15.000</strong>
+        </div>
+        <div class="px-2.5 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border">
+          <span class="text-slate-400">Payback:</span>
+          <strong id="strip-payback-val" class="text-emerald-400 ml-1">2,4 meses</strong>
+        </div>
+        <div class="px-2.5 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border">
+          <span class="text-slate-400">ROI Anual:</span>
+          <strong id="strip-roi-val" class="text-gold ml-1">+402%</strong>
+        </div>
+      </div>
+    </section>
+
+    <!-- 3. MIDDLE 3-COLUMN ENGINEERING WORKSPACE -->
+    <section class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+
+      <!-- Column 1 (4 cols): Precedência & Balanceamento -->
+      <div class="lg:col-span-4 bg-obsidian-card border border-obsidian-border rounded-2xl p-4 flex flex-col justify-between shadow-lg">
+        <div>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div>
+              <h2 class="text-sm font-bold text-white">Precedência & Balanceamento</h2>
+              <p class="text-[11px] text-slate-400">Grafo técnico (DAG) e monumentos fixos</p>
+            </div>
+            <button type="button" onclick="togglePrecedenceModal()" class="px-2.5 py-1 rounded-lg bg-obsidian-inner hover:bg-slate-700 border border-obsidian-border text-[11px] font-semibold text-gold transition">
+              ⇄ Regras
+            </button>
+          </div>
+
+          <div id="precedence-alert" class="hidden mb-2.5 px-3 py-2 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-between gap-2">
+            <span id="precedence-alert-text" class="text-[11px] font-semibold text-rose-200">Violação técnica detectada</span>
+            <button type="button" onclick="repairPrecedenceViolations()" class="px-2 py-1 rounded-md bg-rose-500 hover:bg-rose-400 text-white text-[10px] font-bold shrink-0">
+              Corrigir
+            </button>
+          </div>
+        </div>
+
+        <div class="relative bg-obsidian-slot border border-obsidian-border rounded-xl p-2 flex items-center justify-center min-h-[245px]">
+          <svg id="dag-svg" viewBox="0 0 360 235" class="w-full h-[235px] select-none"></svg>
+          <div id="dag-tooltip" class="hidden pointer-events-none absolute bottom-2 left-2 right-2 bg-[#0B1522]/95 border border-gold/40 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-200 shadow-lg"></div>
+        </div>
+
+        <div class="mt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#1B4F78] border border-sky-400 inline-block"></span> Posto Normal</span>
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-full bg-[#4A3B18] border border-gold inline-block"></span> Crítico</span>
+          <span id="dag-edge-count" class="font-mono text-slate-300">10 regras • 0 fixos</span>
+        </div>
+      </div>
+
+      <!-- Column 2 (4 cols): Alocação por posto & AI Rebalance -->
+      <div class="lg:col-span-4 bg-obsidian-card border border-obsidian-border rounded-2xl p-4 flex flex-col justify-between shadow-lg">
+        <div>
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-sm font-bold text-white">Alocação por posto</h2>
+              <p class="text-[11px] text-slate-400">Arraste elementos ou use RPW / I.A.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <button type="button" id="undo-btn" onclick="undoLastAction()" disabled class="px-2 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border text-[11px] font-semibold text-slate-300 disabled:opacity-40 hover:border-slate-500 transition" title="Desfazer última alteração">
+                ↶
+              </button>
+              <button type="button" onclick="adjustStationCount(-1)" class="px-2 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border text-[11px] font-bold text-slate-300 hover:border-slate-500 transition" title="Remover último posto vazio">
+                − Posto
+              </button>
+              <button type="button" onclick="adjustStationCount(1)" class="px-2 py-1 rounded-lg bg-obsidian-inner border border-obsidian-border text-[11px] font-bold text-slate-300 hover:border-slate-500 transition" title="Adicionar posto futuro">
+                + Posto
+              </button>
+              <button type="button" onclick="rebalanceRPW()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold shadow transition" title="Balancear pelo método Ranked Positional Weight (RPW)">
+                Rebalancear ↻
+              </button>
+              <button type="button" onclick="optimizeSimulatedAnnealingAI()" class="px-2.5 py-1 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-[11px] font-extrabold shadow transition cursor-pointer" title="Otimizador Multi-Objetivo I.A. (Simulated Annealing: minimiza Ciclo + Índice de Suavidade SI)">
+                ✨ Otimizar (I.A.)
+              </button>
+            </div>
+          </div>
+
+          <div id="stations-container" class="space-y-2 max-h-[235px] overflow-y-auto custom-scroll pr-1"></div>
+        </div>
+
+        <div class="mt-3 space-y-2">
+          <div class="px-3 py-1.5 rounded-xl bg-obsidian-inner border border-obsidian-border flex flex-wrap items-center justify-between gap-2 text-[11px]">
+            <span class="text-slate-300">
+              Efic.: <strong id="station-efficiency-val" class="text-sky-300 font-extrabold tabular-nums">92,7%</strong>
+              <span class="text-slate-500 mx-1">|</span>
+              SI: <strong id="station-smoothness-val" class="text-violet-300 font-bold tabular-nums" title="Índice de Suavidade (menor = postos mais equilibrados)">12,4s</strong>
+              <span class="text-slate-500 mx-1">|</span>
+              <span id="monte-carlo-risk-badge" class="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-bold tabular-nums" title="Simulação de Monte Carlo (1.000 turnos): probabilidade de exceder o Takt Time">Risco Takt: 4%</span>
+            </span>
+            <button type="button" onclick="applyTheoreticalMinStations()" id="min-stations-btn" class="text-[10px] font-bold px-2 py-0.5 rounded bg-gold/15 hover:bg-gold/25 text-gold border border-gold/30 transition cursor-pointer" title="Ajustar postos futuros para o mínimo teórico">
+              N mín: <span id="station-min-val" class="tabular-nums">5</span> postos
+            </button>
+          </div>
+
+          <div id="station-status-bar" class="px-3 py-2 rounded-xl bg-emerald-500/15 border border-emerald-500/35 flex items-center justify-between text-xs">
+            <span id="station-status-text" class="font-semibold text-emerald-300">Linha balanceada · 4,0s abaixo do takt</span>
+            <span class="font-mono font-bold text-white tabular-nums">Ciclo: <span id="station-cycle-val">154,0s</span></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3 (4 cols): Estado Futuro / Yamazumi Chart -->
+      <div class="lg:col-span-4 bg-obsidian-card border border-obsidian-border rounded-2xl p-4 flex flex-col justify-between shadow-lg">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <div>
+            <h2 id="chart-card-title" class="text-sm font-bold text-white">Estado Futuro</h2>
+            <p id="chart-card-subtitle" class="text-[11px] text-slate-400">Carga por posto vs. Takt Time</p>
+          </div>
+          <div class="flex items-center gap-1 bg-obsidian-slot p-1 rounded-xl border border-obsidian-border">
+            <button type="button" data-chart-mode="future" onclick="setChartMode('future')" class="chart-mode-btn px-2 py-1 rounded-lg text-[10px] font-bold bg-cyanbar text-white transition">Futuro</button>
+            <button type="button" data-chart-mode="yamazumi" onclick="setChartMode('yamazumi')" class="chart-mode-btn px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white transition">Yamazumi</button>
+            <button type="button" data-chart-mode="current" onclick="setChartMode('current')" class="chart-mode-btn px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white transition">Atual</button>
+            <button type="button" data-chart-mode="compare" onclick="setChartMode('compare')" class="chart-mode-btn px-2 py-1 rounded-lg text-[10px] font-bold text-slate-400 hover:text-white transition">Atual × Futuro</button>
+          </div>
+        </div>
+
+        <div class="relative bg-obsidian-slot border border-obsidian-border rounded-xl p-2 flex-1 min-h-[245px]">
+          <canvas id="cycle-canvas" class="w-full h-[235px] block"></canvas>
+          <div id="chart-tooltip" class="hidden pointer-events-none absolute top-2 left-2 bg-[#0B1522]/95 border border-sky-400/40 rounded-lg px-2.5 py-1 text-[11px] font-semibold text-sky-200 shadow-lg"></div>
+        </div>
+
+        <div id="chart-legend-bar" class="mt-2.5 flex items-center justify-between text-[11px] text-slate-400">
+          <span class="flex items-center gap-1.5"><span class="w-2.5 h-2.5 rounded-xs bg-cyanbar inline-block"></span> Ciclo do Posto</span>
+          <span class="flex items-center gap-1.5"><span class="w-3.5 border-t-2 border-dashed border-gold inline-block"></span> Takt Time</span>
+          <span class="text-emerald-400 font-semibold">● Tempo Real</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4. WORK COMPOSITION & FINANCIALS -->
+    <section class="panel-surface rounded-2xl p-4 sm:p-5 space-y-4">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Composição do Trabalho & Custos</span>
+          <h2 class="text-base font-bold text-white">Composição do trabalho e custos</h2>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 no-print">
+          <div class="relative">
+            <button type="button" id="hypothesis-count" class="cb-action" onclick="openQualityPanel()" title="Consultar evidências de validação">Hipóteses</button>
+            <input id="work-filter-input" type="search" oninput="setWorkFilter(this.value)" placeholder="Filtrar área, elemento ou posto (ex: F3)..." class="w-56 sm:w-64 bg-obsidian-slot border border-obsidian-border focus:border-gold rounded-xl pl-3 pr-2.5 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none" />
+          </div>
+          <button type="button" onclick="toggleComparativeDrawer()" id="toggle-comparative-btn" class="px-3 py-1.5 rounded-xl bg-obsidian-inner hover:bg-slate-700 border border-sky-400/35 text-xs font-semibold text-sky-200 transition">
+            Indicadores Comparativos
+          </button>
+          <button type="button" onclick="toggleAllAreas()" id="toggle-all-areas-btn" class="px-3 py-1.5 rounded-xl bg-obsidian-inner hover:bg-slate-700 border border-obsidian-border text-xs font-semibold text-sky-300 transition">
+            + mostrar todos os detalhes
+          </button>
+          <button type="button" onclick="openAddAreaModal()" class="px-3 py-1.5 rounded-xl bg-obsidian-inner hover:bg-slate-700 border border-gold/40 text-xs font-bold text-gold transition">
+            + Nova Área / Operação
+          </button>
+          <button type="button" onclick="addWorkElement()" class="px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500/30 border border-sky-400/40 text-xs font-bold text-sky-200 transition">
+            + Elemento Cronometrado
+          </button>
+        </div>
+      </div>
+
+      <!-- Collapsible Full Comparative Indicators Table -->
+      <div id="comparative-drawer" class="hidden bg-obsidian-inner/80 border border-sky-400/30 rounded-xl p-3.5">
+        <div class="flex items-center justify-between mb-2.5">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-sky-300">Matriz Executiva Atual × Futuro</span>
+            <h3 class="text-sm font-bold text-white">Indicadores Comparativos de Desempenho</h3>
+          </div>
+          <button type="button" onclick="toggleComparativeDrawer()" class="text-xs text-slate-400 hover:text-white px-2 py-0.5">Fechar ×</button>
+        </div>
+        <div class="overflow-x-auto custom-scroll rounded-lg border border-obsidian-border">
+          <table class="w-full text-left border-collapse text-xs tabular-nums">
+            <thead>
+              <tr class="bg-obsidian-slot text-[11px] font-bold uppercase text-slate-300 border-b border-obsidian-border">
+                <th class="py-2 px-3">Indicador de Engenharia</th>
+                <th class="py-2 px-3 text-right">Estado Atual</th>
+                <th class="py-2 px-3 text-right">Estado Futuro</th>
+                <th class="py-2 px-3 text-right">Variação / Impacto</th>
+              </tr>
+            </thead>
+            <tbody id="comparative-table-body" class="divide-y divide-obsidian-border/70"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Master-Detail Work Composition Table -->
+      <div class="overflow-x-auto custom-scroll rounded-xl border border-obsidian-border">
+        <table class="w-full text-left border-collapse text-xs tabular-nums">
+          <thead>
+            <tr class="bg-obsidian-slot text-[11px] font-bold uppercase text-slate-300 border-b border-obsidian-border">
+              <th rowspan="2" class="py-2.5 px-3.5">
+                <button type="button" onclick="toggleWorkSort('name')" class="inline-flex items-center gap-1.5 hover:text-gold transition cursor-pointer" title="Ordenar alfabeticamente por Área">
+                  <span>Área / operação</span>
+                  <span id="sort-icon-name" class="text-[11px] font-mono text-slate-400">⇅</span>
+                </button>
+              </th>
+              <th colspan="3" class="py-1.5 px-3 text-center text-sky-300 border-l border-obsidian-border">Tempo Atual (s)</th>
+              <th colspan="3" class="py-1.5 px-3 text-center text-emerald-300 border-l border-obsidian-border">Tempo Futuro (s)</th>
+              <th colspan="2" class="py-1.5 px-3 text-center text-gold border-l border-obsidian-border">Custo Op. (R$/pç)</th>
+              <th rowspan="2" class="py-2.5 px-3 text-center border-l border-obsidian-border">Badge</th>
+              <th rowspan="2" class="py-2.5 px-2 text-center border-l border-obsidian-border">Ação</th>
+            </tr>
+            <tr class="bg-obsidian-slot/80 text-[10px] font-semibold uppercase text-slate-400 border-b border-obsidian-border">
+              <th class="py-1.5 px-3 text-right border-l border-obsidian-border">VA</th>
+              <th class="py-1.5 px-3 text-right">NVA</th>
+              <th class="py-1.5 px-3 text-right">
+                <button type="button" onclick="toggleWorkSort('totCur')" class="inline-flex items-center justify-end gap-1 hover:text-gold transition cursor-pointer ml-auto" title="Ordenar por Tempo Total Atual">
+                  <span>Total</span>
+                  <span id="sort-icon-totCur" class="text-[11px] font-mono text-slate-400">⇅</span>
+                </button>
+              </th>
+              <th class="py-1.5 px-3 text-right border-l border-obsidian-border">VA</th>
+              <th class="py-1.5 px-3 text-right">NVA</th>
+              <th class="py-1.5 px-3 text-right">
+                <button type="button" onclick="toggleWorkSort('totFut')" class="inline-flex items-center justify-end gap-1 hover:text-gold transition cursor-pointer ml-auto" title="Ordenar por Tempo Total Futuro">
+                  <span>Total</span>
+                  <span id="sort-icon-totFut" class="text-[11px] font-mono text-slate-400">⇅</span>
+                </button>
+              </th>
+              <th class="py-1.5 px-3 text-right border-l border-obsidian-border">
+                <button type="button" onclick="toggleWorkSort('costCur')" class="inline-flex items-center justify-end gap-1 hover:text-gold transition cursor-pointer ml-auto" title="Ordenar por Custo Atual">
+                  <span>Atual</span>
+                  <span id="sort-icon-costCur" class="text-[11px] font-mono text-slate-400">⇅</span>
+                </button>
+              </th>
+              <th class="py-1.5 px-3 text-right">
+                <button type="button" onclick="toggleWorkSort('costFut')" class="inline-flex items-center justify-end gap-1 hover:text-gold transition cursor-pointer ml-auto" title="Ordenar por Custo Futuro">
+                  <span>Futuro</span>
+                  <span id="sort-icon-costFut" class="text-[11px] font-mono text-slate-400">⇅</span>
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody id="work-table-body" class="divide-y divide-obsidian-border/80"></tbody>
+          <tfoot id="work-table-foot" class="bg-obsidian-slot font-extrabold text-white border-t-2 border-gold/40"></tfoot>
+        </table>
+      </div>
+
+      <!-- Bottom Financial & KPI Analytics Grid -->
+      <div class="pt-2 border-t border-obsidian-border/70 space-y-3.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="w-1.5 h-4 rounded-full bg-gold inline-block"></span>
+            <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-200">Resultados Executivos & Impacto Financeiro</h3>
+          </div>
+          <span class="text-[11px] text-slate-400">Comparativo consolidado entre Estado Atual e Cenário Futuro Balanceado</span>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-4 items-stretch">
+          <!-- 4x2 KPI Cards -->
+          <div class="xl:col-span-6 grid grid-cols-2 sm:grid-cols-4 gap-2.5 tabular-nums">
+            <div id="kpi-cycle-card" class="kpi-hero-card rounded-xl p-3 relative overflow-hidden flex flex-col justify-between">
+              <div id="kpi-cycle-accent" class="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-emerald-400/80 to-emerald-500/20"></div>
+              <div class="flex items-center justify-between gap-1 mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ciclo Linha</span>
+                <span id="kpi-cycle-badge" class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">GANHO</span>
+              </div>
+              <div id="kpi-cycle-pct" class="text-xl sm:text-[22px] font-extrabold text-emerald-400 tracking-tight leading-none">−39,9%</div>
+              <div class="text-[11px] text-slate-400 mt-1.5">no tempo de ciclo</div>
+            </div>
+
+            <div class="kpi-hero-card rounded-xl p-3 relative overflow-hidden flex flex-col justify-between">
+              <div class="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-emerald-400/80 to-sky-400/20"></div>
+              <div class="flex items-center justify-between gap-1 mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Capacidade</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-sky-500/15 text-sky-300 border border-sky-400/30">OUTPUT</span>
+              </div>
+              <div id="kpi-cap-pct" class="text-xl sm:text-[22px] font-extrabold text-emerald-400 tracking-tight leading-none">+66,4%</div>
+              <div class="text-[11px] text-slate-400 mt-1.5">capacidade produtiva</div>
+            </div>
+
+            <div class="kpi-hero-card rounded-xl p-3 relative overflow-hidden flex flex-col justify-between">
+              <div class="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-gold/90 to-amber-500/20"></div>
+              <div class="flex items-center justify-between gap-1 mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Unitário</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-gold/15 text-gold border border-gold/30">MO / PÇ</span>
+              </div>
+              <div id="kpi-unit-saving" class="text-xl sm:text-[22px] font-extrabold text-gold tracking-tight leading-none">R$ 8,10</div>
+              <div class="text-[11px] text-slate-400 mt-1.5">economia / peça (MO)</div>
+            </div>
+
+            <div class="kpi-hero-card rounded-xl p-3 relative overflow-hidden flex flex-col justify-between">
+              <div class="absolute top-0 inset-x-0 h-0.5 bg-gradient-to-r from-emerald-400 to-teal-400/30"></div>
+              <div class="flex items-center justify-between gap-1 mb-1.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Resultado</span>
+                <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">MENSAL</span>
+              </div>
+              <div id="kpi-monthly-saving" class="text-xl sm:text-[22px] font-extrabold text-emerald-400 tracking-tight leading-none">R$ 6.276</div>
+              <div class="text-[11px] text-slate-400 mt-1.5">economia mensal</div>
+            </div>
+
+            <div class="kpi-sub-card rounded-xl px-3 py-2.5 flex flex-col justify-between">
+              <div id="kpi-cycle-vals" class="text-xs font-extrabold text-white">256,3s ➜ 154,0s</div>
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                <span>Ciclo Atual ➜ Futuro</span>
+                <span class="text-slate-500">⏱</span>
+              </div>
+            </div>
+
+            <div class="kpi-sub-card rounded-xl px-3 py-2.5 flex flex-col justify-between">
+              <div id="kpi-cap-vals" class="text-xs font-extrabold text-sky-300">105,3 ➜ 175,3</div>
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                <span>Unidades / turno</span>
+                <span class="text-slate-500">📦</span>
+              </div>
+            </div>
+
+            <div class="kpi-sub-card rounded-xl px-3 py-2.5 flex flex-col justify-between">
+              <div id="kpi-mo-vals" class="text-xs font-extrabold text-gold">R$ 16,23 ➜ 8,13</div>
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                <span>Mão de obra / peça</span>
+                <span class="text-slate-500">👷</span>
+              </div>
+            </div>
+
+            <div class="kpi-sub-card rounded-xl px-3 py-2.5 flex flex-col justify-between">
+              <div id="kpi-payback-vals" class="text-xs font-extrabold text-emerald-300">2,4m • +402%</div>
+              <div class="text-[10px] text-slate-400 mt-1 flex items-center justify-between">
+                <span>Payback & ROI Anual</span>
+                <span class="text-slate-500">📈</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Donut Chart -->
+          <div class="xl:col-span-3 kpi-hero-card rounded-xl p-3.5 flex flex-col justify-between">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-extrabold text-white">Composição Unitária</span>
+              <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-obsidian-slot text-sky-300 border border-obsidian-border">Cenário Futuro</span>
+            </div>
+
+            <div class="flex items-center gap-3.5 my-auto">
+              <div class="relative w-24 h-24 shrink-0">
+                <svg viewBox="0 0 100 100" class="w-full h-full -rotate-90 drop-shadow">
+                  <circle cx="50" cy="50" r="38" fill="none" stroke="#182538" stroke-width="11" />
+                  <circle id="donut-mo-arc" cx="50" cy="50" r="38" fill="none" stroke="#38BDF8" stroke-width="11" stroke-linecap="round" stroke-dasharray="140 238.76" />
+                  <circle id="donut-ops-arc" cx="50" cy="50" r="38" fill="none" stroke="#F4BA25" stroke-width="11" stroke-linecap="round" stroke-dasharray="98 238.76" stroke-dashoffset="-140" />
+                </svg>
+                <div class="absolute inset-0 flex flex-col items-center justify-center text-center">
+                  <span class="text-[9px] uppercase tracking-wider text-slate-400">Total/pç</span>
+                  <strong id="donut-total-cost" class="text-xs font-extrabold text-white tabular-nums">R$ 13,76</strong>
+                </div>
+              </div>
+
+              <div class="space-y-2 text-xs flex-1 min-w-0 tabular-nums">
+                <div class="bg-obsidian-slot/80 border border-obsidian-border/80 rounded-lg px-2.5 py-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate"><span class="w-2 h-2 rounded-full bg-sky-400 shrink-0"></span>Mão de obra</span>
+                    <span id="legend-mo-pct" class="text-[10px] font-mono text-sky-400/90">59%</span>
+                  </div>
+                  <strong id="legend-mo-val" class="block text-xs font-extrabold text-sky-300 mt-0.5">R$ 8,13</strong>
+                </div>
+
+                <div class="bg-obsidian-slot/80 border border-obsidian-border/80 rounded-lg px-2.5 py-1.5">
+                  <div class="flex items-center justify-between gap-1">
+                    <span class="flex items-center gap-1.5 text-[11px] text-slate-300 truncate"><span class="w-2 h-2 rounded-full bg-gold shrink-0"></span>Custos op.</span>
+                    <span id="legend-ops-pct" class="text-[10px] font-mono text-gold/90">41%</span>
+                  </div>
+                  <strong id="legend-ops-val" class="block text-xs font-extrabold text-gold mt-0.5">R$ 5,63</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-2.5 pt-2 border-t border-obsidian-border/70 flex items-center justify-between text-[10px] text-slate-400 tabular-nums">
+              <span>Custo Total Anterior:</span>
+              <strong id="donut-prev-total" class="text-slate-200 font-bold">R$ 24,27 / pç</strong>
+            </div>
+          </div>
+
+          <!-- Horizontal Dual Comparison Bars -->
+          <div class="xl:col-span-3 kpi-hero-card rounded-xl p-3.5 flex flex-col justify-between tabular-nums">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-extrabold text-white">Redução de Custos</span>
+              <span class="text-[10px] font-semibold text-slate-400">Atual vs. Futuro</span>
+            </div>
+
+            <div class="space-y-3 my-auto">
+              <div class="bg-obsidian-slot/75 border border-obsidian-border/80 rounded-lg p-2.5 space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-200">Mão de obra / peça</span>
+                  <span id="bar-mo-label" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">−49,9%</span>
+                </div>
+                <div id="bar-mo-vals" class="text-[10px] text-slate-400 flex justify-between">
+                  <span>Atual: R$ 16,23</span>
+                  <strong class="text-sky-300">Futuro: R$ 8,13</strong>
+                </div>
+                <div class="space-y-1 pt-0.5">
+                  <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-slate-500/70 rounded-full" style="width: 100%"></div>
+                  </div>
+                  <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                    <div id="bar-mo-future" class="h-full bg-gradient-to-r from-sky-400 to-cyan-300 rounded-full transition-all duration-300" style="width: 50%"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bg-obsidian-slot/75 border border-obsidian-border/80 rounded-lg p-2.5 space-y-1.5">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="font-bold text-slate-200">Custos operacionais</span>
+                  <span id="bar-ops-label" class="px-1.5 py-0.5 rounded text-[10px] font-extrabold bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">−30,0%</span>
+                </div>
+                <div id="bar-ops-vals" class="text-[10px] text-slate-400 flex justify-between">
+                  <span>Atual: R$ 8,04</span>
+                  <strong class="text-gold">Futuro: R$ 5,63</strong>
+                </div>
+                <div class="space-y-1 pt-0.5">
+                  <div class="w-full h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                    <div class="h-full bg-slate-500/70 rounded-full" style="width: 100%"></div>
+                  </div>
+                  <div class="w-full h-2 bg-slate-900 rounded-full overflow-hidden">
+                    <div id="bar-ops-future" class="h-full bg-gradient-to-r from-amber-500 to-gold rounded-full transition-all duration-300" style="width: 70%"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dynamic Executive Conclusion Banner -->
+      <div id="conclusion-banner" class="bg-gradient-to-r from-[#0E2F4A] via-[#123A5B] to-[#15456B] border border-sky-400/30 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 text-xs shadow-md">
+        <div class="flex items-center gap-3 min-w-0 flex-1">
+          <span id="conclusion-badge" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-[10px] font-extrabold uppercase tracking-wider shrink-0">
+            ✓ Linha Competitiva
+          </span>
+          <p id="conclusion-text" class="text-slate-100 leading-relaxed">
+            <strong class="text-gold">Conclusão:</strong> a cronoanálise dá visão real do tempo e das perdas; o balanceamento converte esse diagnóstico em produtividade, redução de custos e ganho operacional mensurável.
+          </p>
+        </div>
+        <button type="button" onclick="openCompareModal()" class="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 border border-white/15 text-gold font-bold text-[11px] shrink-0 transition cursor-pointer no-print">
+          ⚖ Comparar Cenários ↗
+        </button>
+      </div>
+    </section>
+      </main>
+    </div>
+  </div>
+
+  <!-- MODAL: ADD NEW AREA / OPERATION -->
+  <div id="area-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <form onsubmit="submitNewArea(event)" class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Nova Atividade</span>
+          <h3 class="text-base font-bold text-white">Adicionar Área / Operação</h3>
+        </div>
+        <button type="button" onclick="closeAddAreaModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+      <div class="space-y-3 text-xs">
+        <div>
+          <div class="flex items-center justify-between mb-1">
+            <label class="block text-slate-300 font-semibold">Nome da Área / Operação</label>
+            <button type="button" onclick="applyNlpAreaSuggestion()" class="text-[10px] font-bold px-2 py-0.5 rounded bg-violet-500/20 hover:bg-violet-500/30 text-violet-200 border border-violet-400/40 transition cursor-pointer">
+              ✨ Classificar VA × NVA (PLN)
+            </button>
+          </div>
+          <input id="new-area-name-input" name="name" required maxlength="80" oninput="previewNlpAreaClassification(this.value)" placeholder="Ex.: Submontagem de Painel ou Inspeção Final" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-3 py-2 text-white focus:outline-none focus:border-gold" />
+          <div id="nlp-area-hint" class="mt-1 text-[11px] text-violet-300/90 min-h-[16px]"></div>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label class="block text-slate-400 mb-1">VA Atual (s)</label>
+            <input name="vaCurrent" type="number" min="0" step="0.1" value="25" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">VA Futuro (s)</label>
+            <input name="vaFuture" type="number" min="0" step="0.1" value="25" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">NVA Atual (s)</label>
+            <input name="nvaCurrent" type="number" min="0" step="0.1" value="10" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">NVA Futuro (s)</label>
+            <input name="nvaFuture" type="number" min="0" step="0.1" value="4" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Custo Op. Atual (R$)</label>
+            <input name="costCurrent" type="number" min="0" step="0.01" value="0.75" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+          <div>
+            <label class="block text-slate-400 mb-1">Custo Op. Futuro (R$)</label>
+            <input name="costFuture" type="number" min="0" step="0.01" value="0.55" class="w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white tabular-nums" />
+          </div>
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 pt-2">
+        <button type="button" onclick="closeAddAreaModal()" class="px-3.5 py-2 rounded-xl bg-obsidian-inner text-slate-300 text-xs font-semibold">Cancelar</button>
+        <button type="submit" class="px-4 py-2 rounded-xl bg-gold hover:bg-[#ffc83b] text-[#0B1E2E] text-xs font-extrabold">Adicionar ao Estudo</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- MODAL: PRECEDENCE RULES EDITOR (DAG) -->
+  <div id="precedence-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Grafo Técnico (DAG)</span>
+          <h3 class="text-base font-bold text-white">Regras de Precedência entre Elementos</h3>
+        </div>
+        <button type="button" onclick="togglePrecedenceModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+      <div class="grid grid-cols-1 sm:grid-cols-12 gap-2 text-xs">
+        <select id="pred-select" class="custom-select sm:col-span-5 bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white"></select>
+        <div class="sm:col-span-2 flex items-center justify-center text-gold font-bold">➜ antes de</div>
+        <select id="succ-select" class="custom-select sm:col-span-5 bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white"></select>
+      </div>
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <button type="button" onclick="inferPrecedencesNLP()" class="px-3 py-1.5 rounded-lg bg-violet-600/25 hover:bg-violet-600/35 border border-violet-400/45 text-violet-200 text-xs font-bold transition cursor-pointer">
+          ✨ Inferir Precedências por Texto (PLN)
+        </button>
+        <button type="button" onclick="addPrecedenceRule()" class="px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold cursor-pointer">+ Adicionar Regra</button>
+      </div>
+      <div id="precedence-rules-list" class="space-y-1.5 max-h-52 overflow-y-auto custom-scroll text-xs"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: SHOP-FLOOR TIME STUDY STOPWATCH & COMPUTER VISION -->
+  <div id="stopwatch-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-xl w-full p-5 shadow-2xl space-y-3.5 max-h-[92vh] overflow-y-auto custom-scroll">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Cronoanálise em Chão de Fábrica • Pilar 4</span>
+          <h3 class="text-base font-bold text-white">Cronômetro Digital & Visão Computacional</h3>
+        </div>
+        <button type="button" onclick="closeStopwatchModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-1.5 bg-obsidian-slot p-1 rounded-xl border border-obsidian-border text-xs">
+        <button type="button" id="sw-mode-manual-btn" onclick="setStopwatchMode('manual')" class="py-1.5 px-3 rounded-lg font-bold bg-sky-600 text-white transition cursor-pointer">
+          ⏱ Cronômetro Manual
+        </button>
+        <button type="button" id="sw-mode-vision-btn" onclick="setStopwatchMode('vision')" class="py-1.5 px-3 rounded-lg font-bold text-slate-300 hover:text-white transition cursor-pointer">
+          📷 Visão Computacional (Câmera)
+        </button>
+      </div>
+
+      <div id="sw-vision-panel" class="hidden bg-obsidian-slot border border-violet-400/35 rounded-2xl p-3 space-y-2.5 text-xs">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <span class="font-bold text-violet-200">Detecção Óptica por Zonas de Bancada (Edge Vision)</span>
+          <div class="flex items-center gap-1.5">
+            <button type="button" onclick="startVisionCamera()" class="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold cursor-pointer">
+              ▶ Ativar Câmera
+            </button>
+            <button type="button" id="vision-sim-btn" onclick="toggleSimulatedVision()" class="px-2.5 py-1 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-[11px] font-bold cursor-pointer">
+              🤖 Simular Bancada
+            </button>
+          </div>
+        </div>
+        <div class="relative rounded-xl overflow-hidden bg-[#070D15] border border-obsidian-border h-40 flex items-center justify-center">
+          <video id="vision-video" autoplay playsinline muted class="hidden w-full h-full object-cover"></video>
+          <canvas id="vision-canvas" width="480" height="160" class="w-full h-full block"></canvas>
+          <div id="vision-zone-overlay" class="absolute bottom-1.5 inset-x-2 flex items-center justify-between text-[10px] font-mono pointer-events-none">
+            <span id="vz-1" class="px-2 py-0.5 rounded bg-black/70 text-sky-300 border border-sky-400/40">Z1: Pick (0%)</span>
+            <span id="vz-2" class="px-2 py-0.5 rounded bg-black/70 text-gold border border-gold/40">Z2: Montagem (0%)</span>
+            <span id="vz-3" class="px-2 py-0.5 rounded bg-black/70 text-emerald-300 border border-emerald-400/40">Z3: Liberação (0%)</span>
+          </div>
+        </div>
+        <div class="flex items-center justify-between text-[11px] text-slate-300">
+          <span id="vision-status-text">Aguardando ativação da câmera ou modo simulado...</span>
+          <span id="vision-ergo-badge" class="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold">Detecção de movimento</span>
+        </div>
+      </div>
+
+      <div class="bg-obsidian-slot border border-obsidian-border rounded-2xl p-3.5 text-center space-y-2.5">
+        <div id="sw-display" class="text-4xl sm:text-5xl font-extrabold font-mono text-gold tracking-wider tabular-nums">00:00.00</div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <button type="button" id="sw-start-btn" onclick="toggleStopwatch()" class="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold transition cursor-pointer">
+            ▶ Iniciar
+          </button>
+          <button type="button" onclick="recordStopwatchLap()" class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-extrabold transition cursor-pointer">
+            + Registrar Tomada (Lap)
+          </button>
+          <button type="button" onclick="resetStopwatch()" class="px-3.5 py-2 rounded-xl bg-obsidian-inner hover:bg-slate-700 border border-obsidian-border text-slate-300 text-xs font-bold transition cursor-pointer">
+            Zerar
+          </button>
+        </div>
+      </div>
+
+      <div>
+        <div class="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
+          <span>Tomadas registradas (<span id="sw-lap-count" class="text-white font-bold">0</span> ciclos)</span>
+          <button type="button" onclick="clearStopwatchLaps()" class="text-rose-400 hover:text-rose-300">Limpar tomadas</button>
+        </div>
+        <div id="sw-laps-list" class="flex flex-wrap gap-1.5 min-h-[34px] max-h-24 overflow-y-auto custom-scroll bg-obsidian-slot border border-obsidian-border rounded-xl p-2 text-xs tabular-nums">
+          <span class="text-slate-500 italic text-[11px]">Inicie o cronômetro e clique em "Registrar Tomada" a cada ciclo...</span>
+        </div>
+      </div>
+
+      <div class="bg-obsidian-inner/90 border border-sky-400/25 rounded-xl p-2.5 flex flex-wrap items-center justify-between gap-2 text-xs tabular-nums">
+        <div class="flex items-center gap-3">
+          <div>
+            <span class="text-[10px] text-slate-400 block">Média ($\bar{x}$)</span>
+            <strong id="sw-stat-mean" class="text-white">0,00s</strong>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block">Desvio Padrão ($s$)</span>
+            <strong id="sw-stat-sd" class="text-sky-300">0,00s</strong>
+          </div>
+          <div>
+            <span class="text-[10px] text-slate-400 block">N Necessário (95%)</span>
+            <strong id="sw-stat-nreq" class="text-gold">—</strong>
+          </div>
+        </div>
+        <span id="sw-stat-badge" class="px-2.5 py-1 rounded-lg bg-obsidian-slot border border-obsidian-border text-[11px] font-semibold text-slate-400">
+          Registre ≥ 2 ciclos para análise estatística
+        </span>
+      </div>
+
+      <div class="grid grid-cols-3 gap-2.5 text-xs">
+        <div class="bg-obsidian-inner border border-obsidian-border rounded-xl p-2.5">
+          <label class="block text-[10px] font-bold uppercase text-slate-400">Ritmo Operador (%)</label>
+          <div class="num-stepper mt-1 w-full">
+            <input id="sw-rating" type="number" min="50" max="150" step="5" value="100" oninput="recalcStopwatchStats()" class="w-full px-2 py-1 text-white font-bold" />
+            <div class="num-stepper-btns">
+              <button type="button" class="num-stepper-btn" onclick="stepInput('sw-rating', 5)" aria-label="Aumentar">▲</button>
+              <button type="button" class="num-stepper-btn" onclick="stepInput('sw-rating', -5)" aria-label="Diminuir">▼</button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-obsidian-inner border border-obsidian-border rounded-xl p-2.5">
+          <label class="block text-[10px] font-bold uppercase text-slate-400">Tolerância / Fadiga (%)</label>
+          <div class="num-stepper mt-1 w-full">
+            <input id="sw-allowance" type="number" min="0" max="50" step="1" value="10" oninput="recalcStopwatchStats()" class="w-full px-2 py-1 text-white font-bold" />
+            <div class="num-stepper-btns">
+              <button type="button" class="num-stepper-btn" onclick="stepInput('sw-allowance', 1)" aria-label="Aumentar">▲</button>
+              <button type="button" class="num-stepper-btn" onclick="stepInput('sw-allowance', -1)" aria-label="Diminuir">▼</button>
+            </div>
+          </div>
+        </div>
+        <div class="bg-obsidian-inner border border-gold/40 rounded-xl p-2.5">
+          <span class="block text-[10px] font-bold uppercase text-gold">Tempo Padrão</span>
+          <strong id="sw-standard-time" class="mt-1 block text-base font-extrabold text-white tabular-nums">0,0 s</strong>
+        </div>
+      </div>
+
+      <div class="bg-obsidian-inner/80 border border-obsidian-border rounded-xl p-3 space-y-2 text-xs">
+        <label class="block font-semibold text-slate-300">Aplicar Tempo Padrão calculado ao elemento:</label>
+        <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+          <select id="sw-target-element" class="custom-select sm:col-span-7 bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white"></select>
+          <select id="sw-target-field" class="custom-select sm:col-span-5 bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-gold font-semibold">
+            <option value="vaCurrent">VA Atual (s)</option>
+            <option value="nvaCurrent">NVA Atual (s)</option>
+            <option value="vaFuture">VA Futuro (s)</option>
+            <option value="nvaFuture">NVA Futuro (s)</option>
+          </select>
+        </div>
+        <div class="flex justify-end pt-1">
+          <button type="button" onclick="applyStopwatchToElement()" class="px-4 py-2 rounded-xl bg-gold hover:bg-[#ffc83b] text-[#0B1E2E] font-extrabold transition">
+            Aplicar Tempo ao Estudo
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SCENARIO COMPARATOR -->
+  <div id="compare-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-3xl w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Gestão de Portfólio & Decisão</span>
+          <h3 class="text-base font-bold text-white">⚖ Comparador de Cenários (Estudo A × Estudo B)</h3>
+        </div>
+        <button type="button" onclick="closeCompareModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div class="bg-obsidian-inner border border-sky-400/35 rounded-xl p-2.5">
+          <label class="block text-[10px] font-bold uppercase text-sky-300 mb-1">Cenário Base (Estudo A)</label>
+          <select id="compare-study-a" onchange="renderCompareTable()" class="custom-select w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white font-bold"></select>
+        </div>
+        <div class="bg-obsidian-inner border border-gold/45 rounded-xl p-2.5">
+          <label class="block text-[10px] font-bold uppercase text-gold mb-1">Cenário Alternativo (Estudo B)</label>
+          <select id="compare-study-b" onchange="renderCompareTable()" class="custom-select w-full bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white font-bold"></select>
+        </div>
+      </div>
+
+      <div class="overflow-x-auto custom-scroll rounded-xl border border-obsidian-border max-h-[340px]">
+        <table class="w-full text-left border-collapse text-xs tabular-nums">
+          <thead>
+            <tr class="bg-obsidian-slot text-[11px] font-bold uppercase text-slate-300 border-b border-obsidian-border">
+              <th class="py-2.5 px-3">Indicador (Estado Futuro)</th>
+              <th class="py-2.5 px-3 text-right text-sky-300">Estudo A</th>
+              <th class="py-2.5 px-3 text-right text-gold">Estudo B</th>
+              <th class="py-2.5 px-3 text-right">Diferença (B − A)</th>
+              <th class="py-2.5 px-3 text-center">Melhor</th>
+            </tr>
+          </thead>
+          <tbody id="compare-table-body" class="divide-y divide-obsidian-border/70"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: GOVERNANCE & AUDIT TRAIL -->
+  <div id="audit-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-xl w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Governança & Rastreabilidade</span>
+          <h3 class="text-base font-bold text-white">📜 Trilha de Auditoria do Estudo</h3>
+        </div>
+        <button type="button" onclick="closeAuditModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-obsidian-inner border border-obsidian-border rounded-xl px-3 py-2 text-xs">
+        <div>
+          <span class="text-slate-400">Responsável:</span> <strong id="audit-author-badge" class="text-white">Eng. Processos</strong>
+          <span class="text-slate-500 mx-1.5">•</span>
+          <span class="text-slate-400">Revisão:</span> <strong id="audit-rev-badge" class="text-gold font-mono">Rev. 1.0</strong>
+        </div>
+        <button class="cb-action" onclick="openCloudPanel()">Revisões do servidor</button>
+      </div>
+
+      <div id="audit-log-list" class="space-y-1.5 max-h-64 overflow-y-auto custom-scroll text-xs"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: SHARE STUDY LINK & OFFLINE PWA INSTALL -->
+  <div id="share-pwa-modal" class="hidden fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-gold/45 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Arquitetura Híbrida Web & Chão de Fábrica</span>
+          <h3 class="text-base font-bold text-white">🔗 Compartilhamento & Instalação Offline (PWA)</h3>
+        </div>
+        <button type="button" onclick="closeSharePwaModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div class="bg-obsidian-inner border border-obsidian-border rounded-xl p-3 space-y-2 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-white">Link Direto do Estudo Ativo</span>
+          <span class="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Snapshot Portátil</span>
+        </div>
+        <p class="text-[11px] text-slate-400">Envie este link para abrir exatamente este estudo e seus parâmetros em outro navegador ou dispositivo.</p>
+        <div class="flex items-center gap-2">
+          <input id="share-url-input" type="text" readonly class="flex-1 bg-obsidian-slot border border-obsidian-border rounded-lg px-2.5 py-1.5 text-[11px] font-mono text-sky-200 focus:outline-none" />
+          <button type="button" onclick="copyShareUrl()" class="px-3 py-1.5 rounded-lg bg-gold hover:bg-[#ffc83b] text-[#0B1E2E] font-extrabold shrink-0 transition">
+            Copiar Link
+          </button>
+        </div>
+      </div>
+
+      <div class="bg-obsidian-inner border border-sky-400/30 rounded-xl p-3 space-y-2 text-xs">
+        <div class="flex items-center justify-between">
+          <span class="font-bold text-sky-200">Status PWA Offline-First</span>
+          <span id="pwa-status-pill" class="text-[10px] font-bold px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-400/35">Manifesto Ativo</span>
+        </div>
+        <p class="text-[11px] text-slate-300 leading-relaxed">
+          Todos os estudos são salvos automaticamente no armazenamento local do dispositivo. Para usar sem internet no tablet do chão de fábrica, instale pelo menu do navegador (<strong>"Instalar aplicativo"</strong>) ou baixe o pacote autônomo.
+        </p>
+        <div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+          <button type="button" id="pwa-install-trigger" onclick="triggerPwaInstall()" class="hidden px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition">
+            📲 Instalar Aplicativo Agora
+          </button>
+          <button type="button" onclick="downloadStandaloneProject()" class="px-3 py-1.5 rounded-lg bg-obsidian-slot hover:bg-slate-700 border border-gold/40 text-gold font-bold transition">
+            ⬇ Baixar Versão Autônoma (.html)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: SAFE STUDY DELETION -->
+  <div id="delete-study-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-rose-500/50 rounded-2xl max-w-lg w-full p-5 shadow-2xl space-y-4">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-rose-500/15 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.2" d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          </div>
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-rose-400">Gerenciamento do Portfólio</span>
+            <h3 class="text-base font-bold text-white">Excluir Estudo(s) Selecionado(s)</h3>
+          </div>
+        </div>
+        <button type="button" onclick="closeDeleteStudyModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div id="delete-target-highlight" class="bg-rose-950/40 border border-rose-500/45 rounded-xl p-3 space-y-1 text-xs">
+        <div class="text-[10px] font-bold uppercase tracking-wider text-rose-300">Estudo marcado para exclusão:</div>
+        <div id="delete-target-summary" class="text-sm font-extrabold text-white">—</div>
+        <div id="delete-target-meta" class="text-[11px] text-rose-200/80">—</div>
+      </div>
+
+      <div class="space-y-1.5">
+        <div class="flex items-center justify-between text-[11px] text-slate-400">
+          <span>Marque a caixa de seleção do(s) estudo(s) que deseja remover:</span>
+          <span class="text-[10px] text-slate-400">Mín. 1 estudo mantido</span>
+        </div>
+        <div id="delete-study-checklist" class="space-y-1.5 max-h-48 overflow-y-auto custom-scroll pr-1"></div>
+      </div>
+
+      <label class="flex items-start gap-2.5 bg-obsidian-inner border border-obsidian-border hover:border-rose-400/50 rounded-xl p-3 cursor-pointer select-none">
+        <input id="delete-confirm-checkbox" type="checkbox" onchange="updateDeleteConfirmState()"
+               class="mt-0.5 w-4 h-4 rounded border-slate-500 bg-obsidian-slot text-rose-500 accent-rose-500 cursor-pointer shrink-0" />
+        <span class="text-xs text-slate-200 leading-snug">
+          Confirmo que desejo <strong class="text-rose-300">excluir permanentemente</strong> o(s) estudo(s) marcado(s) acima, incluindo todas as suas áreas, tempos e regras de precedência.
+        </span>
+      </label>
+
+      <div class="flex items-center justify-end gap-2 pt-1">
+        <button type="button" onclick="closeDeleteStudyModal()" class="px-4 py-2 rounded-xl bg-obsidian-inner hover:bg-slate-700 border border-obsidian-border text-slate-200 text-xs font-semibold transition">
+          Cancelar
+        </button>
+        <button type="button" id="confirm-delete-submit-btn" onclick="confirmDeleteSelectedStudies()" disabled
+                class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-extrabold shadow-lg transition cursor-pointer">
+          🗑 Excluir Definitivamente
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AI KAIZEN COPILOT, MONTE CARLO & EXECUTIVE REPORT -->
+  <div id="ai-copilot-modal" class="hidden fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-4">
+    <div class="bg-obsidian-card border border-violet-400/50 rounded-2xl max-w-3xl w-full p-5 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto custom-scroll">
+      <div class="flex items-center justify-between border-b border-obsidian-border pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-violet-500/20 border border-violet-400/45 flex items-center justify-center text-lg shrink-0">✨</div>
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-violet-300">Inteligência Artificial Industrial • SDD v2.0</span>
+            <h3 class="text-base font-bold text-white">Copiloto Kaizen I.A., Simulação Estocástica & Parecer Executivo</h3>
+          </div>
+        </div>
+        <button type="button" onclick="closeAiCopilotModal()" class="text-slate-400 hover:text-white text-lg">×</button>
+      </div>
+
+      <div id="ai-telemetry-strip" class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-xs tabular-nums"></div>
+
+      <div class="bg-obsidian-inner border border-obsidian-border rounded-xl p-3.5 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-gold">Pilar 2 • Diagnóstico Prescritivo de Perdas NVA</span>
+            <h4 class="text-sm font-bold text-white">Contramedidas Kaizen Recomendadas pela I.A.</h4>
+          </div>
+          <button type="button" onclick="applyAiKaizenPlan()" class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-sky-600 hover:from-violet-500 hover:to-sky-500 text-white text-xs font-extrabold shadow transition cursor-pointer">
+            ✨ Aplicar Plano Kaizen (1 Clique)
+          </button>
+        </div>
+        <div id="ai-kaizen-recommendations" class="space-y-2 text-xs"></div>
+      </div>
+
+      <div class="bg-obsidian-inner border border-obsidian-border rounded-xl p-3.5 space-y-2">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <span class="text-[10px] font-bold uppercase tracking-wider text-emerald-300">Relatório Gerencial Automático</span>
+            <h4 class="text-sm font-bold text-white">Parecer Técnico para Aprovação de CAPEX</h4>
+          </div>
+          <button type="button" onclick="copyExecutiveReportAI()" class="px-3 py-1 rounded-lg bg-obsidian-slot hover:bg-slate-700 border border-gold/40 text-gold text-xs font-bold cursor-pointer">
+            📋 Copiar Parecer
+          </button>
+        </div>
+        <textarea id="ai-executive-report-text" rows="5" readonly class="w-full bg-obsidian-slot border border-obsidian-border rounded-xl p-2.5 text-[11px] font-mono text-slate-200 leading-relaxed focus:outline-none"></textarea>
+      </div>
+
+      <details class="bg-obsidian-slot border border-obsidian-border rounded-xl p-3 text-xs">
+        <summary class="cursor-pointer font-bold text-slate-300 hover:text-gold select-none">
+          ⚙ Integração Generativa Online Opcional (LLM Gateway / API Key)
+        </summary>
+        <div class="mt-2.5 grid grid-cols-1 sm:grid-cols-12 gap-2">
+          <input id="ai-llm-endpoint" type="text" placeholder="Endpoint (ex: https://generativelanguage.googleapis.com/...)" class="sm:col-span-6 bg-obsidian-card border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white text-[11px]" />
+          <input id="ai-llm-key" type="password" placeholder="Chave desta sessão" class="sm:col-span-4 bg-obsidian-card border border-obsidian-border rounded-lg px-2.5 py-1.5 text-white text-[11px]" />
+          <button type="button" onclick="saveAiGatewayConfig()" class="sm:col-span-2 px-2.5 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-500 text-white font-bold text-[11px] cursor-pointer">Configurar</button>
+          <input id="ai-llm-model" aria-label="Modelo do gateway" placeholder="Modelo do gateway compatível com OpenAI" class="sm:col-span-6 bg-obsidian-slot p-2 rounded">
+          <button id="ask-gateway" type="button" onclick="requestGatewayReport()" class="sm:col-span-6 rounded bg-sky-800 p-2">Enviar indicadores e gerar parecer</button>
+          <p class="sm:col-span-12 text-slate-400">Envio opcional de Takt, ciclos, capacidade e economia estimada ao endereço informado. A chave vale apenas nesta sessão.</p>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div role="status" aria-live="polite" id="toast-box" class="fixed bottom-4 right-4 z-50 translate-y-16 opacity-0 pointer-events-none transition-all duration-300 bg-[#0F2940] border border-gold/50 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2">
+    <span class="w-2 h-2 rounded-full bg-gold"></span>
+    <span id="toast-message">Pronto</span>
+  </div>
+
+<div id="enterprise-tools"></div><script type="module" src="/src/workspace/screen.js"></script>
+</body></html>

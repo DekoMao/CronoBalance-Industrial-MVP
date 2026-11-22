@@ -11,7 +11,7 @@ export type WorkElement = {
 export type EquipmentResource = { id: Id; name: string; currentStationIndex: number | null; futureStationIndex: number | null };
 export type Study = {
   id: Id; version: number; name: string; productFamily: string;
-  parameters: { shiftSeconds: string; demandPerShift: string; productiveDaysPerMonth: number; baselineUnitsPerDay: string; laborCostPerShiftCurrent: string; laborCostPerShiftFuture: string };
+  parameters: { shiftSeconds: string; demandPerShift: string; productiveDaysPerMonth: number; baselineUnitsPerDay: string; laborCostPerShiftCurrent: string; laborCostPerShiftFuture: string; oeePct?: string; seasonalityPct?: number; capex?: string };
   stations: { current: number; future: number };
   areas: Area[]; elements: WorkElement[]; equipment: EquipmentResource[]; precedences: { predecessorId: Id; successorId: Id }[];
   status?: string;

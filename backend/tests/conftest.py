@@ -1,7 +1,7 @@
 import os
 from pathlib import Path
 
-os.environ["DATABASE_URL"] = f"sqlite:///{Path(__file__).parent / 'cronobalance-test.db'}"
+os.environ["DATABASE_URL"] = os.getenv("CB_TEST_DATABASE_URL", f"sqlite:///{Path(__file__).parent / 'cronobalance-test.db'}")
 os.environ["APP_ENV"] = "development"
 os.environ["DEV_AUTH_TOKEN"] = "test-local-token"
 os.environ["AUTO_CREATE_SCHEMA"] = "true"

@@ -12,12 +12,12 @@ from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, selectinload
 
 from .db.models import (Area, AuditLog, ElementAssignment, EquipmentResource, Membership, Organization,
                         Precedence, Revision, Station, Study, User, WorkElement, MutationReceipt)
 from .db.session import Base, engine, get_db
-from .domain.models import CreateStudy, OptimizeRequest, PrecedenceInput, StudyPatch, calculate, validate_dag
+from .domain.models import CreateStudy, OptimizeRequest, PrecedenceInput, StudyPatch, calculate, validate_dag, valid_exception
 from .security import Actor, actor_context, require_role
 
 @asynccontextmanager
@@ -96,10 +96,17 @@ def require_version(study: Study, if_match: str | None):
         raise HTTPException(412, detail={"code":"VERSION_CONFLICT", "currentVersion":study.version, "etag":study_etag(study)})
 
 
-def load_study(db: Session, study_id: str, actor: Actor) -> Study:
-    study = db.execute(select(Study).where(Study.id == study_id, Study.organization_id == actor.organization_id)
-        .options(joinedload(Study.areas), joinedload(Study.elements), joinedload(Study.stations), joinedload(Study.precedences))).unique().scalar_one_or_none()
-    if not study: raise HTTPException(404, "Estudo não encontrado")
+def load_study(db: Session, study_id: str, actor: Actor, lock: bool = False) -> Study:
+    query = select(Study).where(Study.id == study_id, Study.organization_id == actor.organization_id)
+    if lock:
+        query = query.with_for_update(of=Study)
+    query = query.options(selectinload(Study.areas), selectinload(Study.elements),
+                          selectinload(Study.stations), selectinload(Study.precedences))
+    study = db.execute(query).scalar_one_or_none()
+    if not study:
+        raise HTTPException(404, "Estudo não encontrado")
+    if lock and study.status == "archived":
+        raise HTTPException(409, {"code": "STUDY_ARCHIVED"})
     return study
 
 
@@ -115,11 +122,12 @@ def domain_dict(study: Study) -> dict:
             "current":{"stationIndex":station_index(study,ca),"vaSeconds":e.current_va_seconds,"nvaSeconds":e.current_nva_seconds},
             "future":{"stationIndex":station_index(study,fa),"vaSeconds":e.future_va_seconds,"nvaSeconds":e.future_nva_seconds},
             "ergonomicZone":e.ergonomic_zone,"fixedEquipmentId":e.fixed_equipment_id,
-            "validationStatus":e.validation_status,"evidenceRef":e.evidence_ref})
+            "validationStatus":e.validation_status,"evidenceRef":e.evidence_ref,"ergonomicException":e.ergonomic_exception})
     parameters={"name":study.name,"productFamily":study.product_family,"shiftSeconds":study.shift_seconds,
         "demandPerShift":study.demand_per_shift,"productiveDaysPerMonth":study.productive_days_per_month,
         "baselineUnitsPerDay":study.baseline_units_per_day,"laborCostPerShiftCurrent":study.labor_cost_current,
-        "laborCostPerShiftFuture":study.labor_cost_future}
+        "laborCostPerShiftFuture":study.labor_cost_future,"oeePct":study.oee_pct,
+        "seasonalityPct":study.seasonality_pct,"capex":study.capex}
     equipment=[{"id":x.id,"name":x.name,"currentStationIndex":x.current_station_index,"futureStationIndex":x.future_station_index}
         for x in db_equipment(study)]
     return {"parameters":parameters,"stations":{"current":study.current_station_count,"future":study.future_station_count},
@@ -158,7 +166,7 @@ def study_payload(db: Session, study: Study) -> dict:
          "parameters":{**raw["parameters"],"taktSeconds":metrics["taktSeconds"]},"stations":stations,"areas":areas,
          "elements":raw["elements"],"equipment":raw["equipment"],"precedences":raw["precedences"],"metrics":metrics,
          "validation":{"isValid":True,"hypothesisCount":sum(e.validation_status=="hypothesis" for e in study.elements),"unresolvedWarnings":[]},
-         "updatedAt":study.updated_at}
+         "workspace":study.workspace_metadata or {},"updatedAt":study.updated_at}
     return decimal_json(out)
 
 
@@ -169,6 +177,7 @@ def snapshot(db: Session, study: Study) -> dict:
 def record_revision(db: Session, study: Study, actor: Actor, summary: str, request_id: str, action: str,
                     before: dict | None = None, client_mutation_id: str | None = None):
     db.flush()
+    db.expire(study, ["areas","elements","stations","precedences"])
     snap=snapshot(db,study)
     db.add(Revision(study_id=study.id,revision_number=study.version,source_version=study.version,snapshot=snap,
                     change_summary=summary,created_by=actor.user.id))
@@ -178,14 +187,7 @@ def record_revision(db: Session, study: Study, actor: Actor, summary: str, reque
     db.flush()
 
 
-def create_study_rows(db: Session, actor: Actor, payload: CreateStudy, request_id: str, summary="Estudo criado") -> Study:
-    p=payload.parameters
-    study=Study(id=str(payload.studyId or uuid4()),organization_id=actor.organization_id,name=p.name,product_family=p.productFamily,shift_seconds=p.shiftSeconds,
-        demand_per_shift=p.demandPerShift,productive_days_per_month=p.productiveDaysPerMonth,baseline_units_per_day=p.baselineUnitsPerDay,
-        labor_cost_current=p.laborCostPerShiftCurrent,labor_cost_future=p.laborCostPerShiftFuture,
-        current_station_count=payload.stations.current,future_station_count=payload.stations.future,
-        created_by=actor.user.id,updated_by=actor.user.id)
-    db.add(study); db.flush()
+def write_graph(db: Session, study: Study, actor: Actor, payload: CreateStudy):
     stations={}
     for scenario,count in (("current",payload.stations.current),("future",payload.stations.future)):
         stations[scenario]={}
@@ -194,7 +196,7 @@ def create_study_rows(db: Session, actor: Actor, payload: CreateStudy, request_i
             db.add(station); db.flush(); stations[scenario][index]=station
     area_by_client={}; area_by_id={}; area_by_name={}
     for item in payload.areas:
-        area=Area(study_id=study.id,name=item.name,sort_order=item.sortOrder,
+        area=Area(id=str(item.id or uuid4()),study_id=study.id,name=item.name,sort_order=item.sortOrder,
                   operational_cost_current=item.operationalCostPerPieceCurrent,operational_cost_future=item.operationalCostPerPieceFuture)
         db.add(area); db.flush(); area_by_client[item.clientId]=area; area_by_id[item.id]=area; area_by_name[item.name]=area
     equipment_by_client={};equipment_by_id={}
@@ -222,6 +224,18 @@ def create_study_rows(db: Session, actor: Actor, payload: CreateStudy, request_i
     validate_dag(element_ids,edge_ids)
     for pred,succ in edge_ids:
         db.add(Precedence(study_id=study.id,predecessor_id=pred,successor_id=succ,created_by=actor.user.id))
+
+
+def create_study_rows(db: Session, actor: Actor, payload: CreateStudy, request_id: str, summary="Estudo criado") -> Study:
+    p=payload.parameters
+    study=Study(id=str(payload.studyId or uuid4()),organization_id=actor.organization_id,name=p.name,product_family=p.productFamily,shift_seconds=p.shiftSeconds,
+        demand_per_shift=p.demandPerShift,productive_days_per_month=p.productiveDaysPerMonth,baseline_units_per_day=p.baselineUnitsPerDay,
+        labor_cost_current=p.laborCostPerShiftCurrent,labor_cost_future=p.laborCostPerShiftFuture,
+        oee_pct=p.oeePct,seasonality_pct=p.seasonalityPct,capex=p.capex,
+        current_station_count=payload.stations.current,future_station_count=payload.stations.future, workspace_metadata=payload.workspace.model_dump(mode="json"),
+        created_by=actor.user.id,updated_by=actor.user.id)
+    db.add(study); db.flush()
+    write_graph(db, study, actor, payload)
     study.version=1; study.updated_by=actor.user.id
     db.flush(); record_revision(db,study,actor,summary,request_id,"study.create")
     return study
@@ -243,13 +257,15 @@ def list_studies(cursor: str | None=None, limit: int=50, actor: Actor=Depends(ac
     limit=max(1,min(100,limit))
     try: offset=max(0,int(cursor or 0))
     except ValueError: raise HTTPException(422,"Cursor deve ser um offset numérico não negativo")
-    query=db.query(Study).filter_by(organization_id=actor.organization_id).order_by(Study.updated_at.desc(),Study.id)
+    query=db.query(Study).filter_by(organization_id=actor.organization_id).filter(Study.status!="archived").order_by(Study.updated_at.desc(),Study.id)
     rows=query.offset(offset).limit(limit+1).all(); has_more=len(rows)>limit; rows=rows[:limit]
     return {"items":[{"id":s.id,"name":s.name,"productFamily":s.product_family,"version":s.version,"status":s.status,"updatedAt":s.updated_at} for s in rows],"nextCursor":str(offset+limit) if has_more else None}
 
 
 @app.post("/api/v1/studies", status_code=201)
 def create_study(payload: CreateStudy, response: Response, request: Request, actor: Actor=Depends(require_role("engineer","admin")), db: Session=Depends(get_db), idempotency_key: str | None=Header(default=None,alias="Idempotency-Key")):
+    if payload.stations.future>12 or payload.stations.current>20:
+        raise HTTPException(422,"Limite de 12 postos futuros e 20 atuais na criação")
     try:
         if payload.studyId:
             existing=db.query(Study).filter_by(id=str(payload.studyId),organization_id=actor.organization_id).first()
@@ -271,9 +287,9 @@ def get_study(study_id: str, response: Response, actor: Actor=Depends(actor_cont
 @app.patch("/api/v1/studies/{study_id}/elements/batch")
 def patch_batch(study_id: str,payload: StudyPatch,request: Request,response: Response,if_match: str | None=Header(default=None,alias="If-Match"),
                 actor: Actor=Depends(require_role("engineer","admin")),db: Session=Depends(get_db)):
-    study=load_study(db,study_id,actor)
+    study=load_study(db,study_id,actor,lock=True)
     old_receipt=db.query(MutationReceipt).filter_by(study_id=study.id,client_mutation_id=str(payload.clientMutationId)).first()
-    if old_receipt: response.headers["ETag"]=study_etag(study); return old_receipt.response
+    if old_receipt: response.headers["ETag"]=study_etag(study); return study_payload(db,study)
     require_version(study,if_match); before=study_payload(db,study)
     area_map={a.id:a for a in study.areas}; element_map={e.id:e for e in study.elements}
     equipment_map={x.id:x for x in db.query(EquipmentResource).filter_by(study_id=study.id).all()}
@@ -414,7 +430,8 @@ def patch_batch(study_id: str,payload: StudyPatch,request: Request,response: Res
             elif entity=="studyParameters":
                 mapping={"name":"name","productFamily":"product_family","shiftSeconds":"shift_seconds","demandPerShift":"demand_per_shift",
                          "productiveDaysPerMonth":"productive_days_per_month","baselineUnitsPerDay":"baseline_units_per_day",
-                         "laborCostPerShiftCurrent":"labor_cost_current","laborCostPerShiftFuture":"labor_cost_future"}
+                         "laborCostPerShiftCurrent":"labor_cost_current","laborCostPerShiftFuture":"labor_cost_future",
+                         "oeePct":"oee_pct","seasonalityPct":"seasonality_pct","capex":"capex"}
                 for path,value in changes.items():
                     if path not in mapping: raise HTTPException(422,f"Campo não editável: {path}")
                     if path=="name":
@@ -426,9 +443,18 @@ def patch_batch(study_id: str,payload: StudyPatch,request: Request,response: Res
                         days=int(value)
                         if days<0 or days>31: raise HTTPException(422,"Dias produtivos deve ficar entre 0 e 31")
                         setattr(study,mapping[path],days)
+                    elif path=="oeePct":
+                        number=checked_decimal(value,2,allow_zero=False)
+                        if number<10 or number>100: raise HTTPException(422,"OEE deve ficar entre 10% e 100%")
+                        setattr(study,mapping[path],number)
+                    elif path=="seasonalityPct":
+                        number=Decimal(str(value))
+                        if not number.is_finite() or number.as_tuple().exponent < -2 or number < -30 or number > 50: raise HTTPException(422,"Sazonalidade deve ficar entre -30% e +50%")
+                        setattr(study,mapping[path],number)
+                    elif path=="capex": setattr(study,mapping[path],checked_decimal(value,2))
                     else: setattr(study,mapping[path],checked_decimal(value,2 if path.startswith("laborCost") else 3,allow_zero=path!="shiftSeconds"))
             else: raise HTTPException(422,"Entidade de lote desconhecida")
-        study.version+=1; study.updated_by=actor.user.id; study.updated_at=datetime.now(timezone.utc)
+        study.status="draft"; study.version+=1; study.updated_by=actor.user.id; study.updated_at=datetime.now(timezone.utc)
         record_revision(db,study,actor,"Atualização em lote",request.state.request_id,"study.batch.update",before,str(payload.clientMutationId))
         result=study_payload(db,study)
         db.add(MutationReceipt(study_id=study.id,client_mutation_id=str(payload.clientMutationId),response=result))
@@ -440,13 +466,13 @@ def patch_batch(study_id: str,payload: StudyPatch,request: Request,response: Res
 @app.put("/api/v1/studies/{study_id}/precedences")
 def replace_precedences(study_id: str, edges: list[PrecedenceInput], request: Request,response: Response,
     if_match: str | None=Header(default=None,alias="If-Match"),actor: Actor=Depends(require_role("engineer","admin")),db: Session=Depends(get_db)):
-    study=load_study(db,study_id,actor); require_version(study,if_match); before=study_payload(db,study)
+    study=load_study(db,study_id,actor,lock=True); require_version(study,if_match); before=study_payload(db,study)
     edge_pairs=[(str(e.predecessorId),str(e.successorId)) for e in edges]
     try:
         validate_dag({e.id for e in study.elements},edge_pairs)
         db.query(Precedence).filter_by(study_id=study.id).delete()
         for a,b in edge_pairs: db.add(Precedence(study_id=study.id,predecessor_id=a,successor_id=b,created_by=actor.user.id))
-        study.version+=1; study.updated_by=actor.user.id
+        study.status="draft"; study.version+=1; study.updated_by=actor.user.id
         record_revision(db,study,actor,"Precedências atualizadas",request.state.request_id,"precedence.replace",before)
         out=study_payload(db,study); db.commit(); response.headers["ETag"]=study_etag(study); return out
     except Exception: db.rollback(); raise
@@ -459,7 +485,7 @@ def resize_stations(study_id: str,scenario: str,payload: dict,request: Request,r
     try: count=int(payload.get("count",0))
     except (TypeError,ValueError): raise HTTPException(422,"Quantidade de postos inválida")
     if count<1 or count>100: raise HTTPException(422,"A quantidade deve ficar entre 1 e 100 postos")
-    study=load_study(db,study_id,actor); require_version(study,if_match); before=study_payload(db,study)
+    study=load_study(db,study_id,actor,lock=True); require_version(study,if_match); before=study_payload(db,study)
     try:
         existing={s.station_index:s for s in study.stations if s.scenario==scenario}
         if count<len(existing):
@@ -473,7 +499,7 @@ def resize_stations(study_id: str,scenario: str,payload: dict,request: Request,r
                 if index not in existing: db.add(Station(study_id=study.id,scenario=scenario,station_index=index,label=f"F{index}"))
         if scenario=="current": study.current_station_count=count
         else: study.future_station_count=count
-        study.version+=1; study.updated_by=actor.user.id
+        study.status="draft"; study.version+=1; study.updated_by=actor.user.id
         record_revision(db,study,actor,f"Postos do cenário {scenario} ajustados para {count}",request.state.request_id,"station.resize",before)
         out=study_payload(db,study); db.commit(); response.headers["ETag"]=study_etag(study); return out
     except Exception: db.rollback(); raise
@@ -490,7 +516,7 @@ def optimize(study_id: str,payload: OptimizeRequest,actor: Actor=Depends(require
 @app.post("/api/v1/studies/{study_id}/optimization-proposals/apply")
 def apply_proposal(study_id: str,proposal: dict,request: Request,response: Response,
                    if_match: str | None=Header(default=None,alias="If-Match"),actor: Actor=Depends(require_role("engineer","admin")),db: Session=Depends(get_db)):
-    study=load_study(db,study_id,actor); require_version(study,if_match)
+    study=load_study(db,study_id,actor,lock=True); require_version(study,if_match)
     if int(proposal.get("inputVersion",-1))!=study.version: raise HTTPException(412,"A proposta está baseada em outra revisão")
     before=study_payload(db,study)
     try:
@@ -515,7 +541,7 @@ def apply_proposal(study_id: str,proposal: dict,request: Request,response: Respo
         equipment={x.id:x for x in db.query(EquipmentResource).filter_by(study_id=study.id).all()}
         fixed_stations={s.station_index:s for s in study.stations if s.scenario=="future" and s.fixed_equipment_id}
         for element in study.elements:
-            if element.ergonomic_zone=="red" and not element.ergonomic_exception:
+            if element.ergonomic_zone=="red" and not valid_exception(element.ergonomic_exception):
                 raise HTTPException(422,detail={"code":"ERGONOMIC_RESTRICTION","elementId":element.id})
             if element.fixed_equipment_id:
                 resource=equipment.get(element.fixed_equipment_id)
@@ -533,7 +559,8 @@ def apply_proposal(study_id: str,proposal: dict,request: Request,response: Respo
         if proposal.get("objective",{}).get("cycleSeconds") is None or Decimal(str(proposal["objective"]["cycleSeconds"]))!=projected_cycle:
             raise HTTPException(422,"O ciclo informado na proposta não corresponde às cargas recalculadas")
         if proposal.get("checks",{}).get("takt")=="pass":
-            takt=Decimal(str(study.shift_seconds))/Decimal(str(study.demand_per_shift)) if study.demand_per_shift>0 else None
+            effective_demand=Decimal(str(study.demand_per_shift))*(Decimal(1)+Decimal(str(study.seasonality_pct))/Decimal(100))
+            takt=Decimal(str(study.shift_seconds))*Decimal(str(study.oee_pct))/Decimal(100)/effective_demand if effective_demand>0 else None
             if takt is None or projected_cycle>takt: raise HTTPException(422,"A proposta informa atendimento ao Takt sem atingir o limite")
         # Build new stations first, then move assignments, then delete empty
         # surplus stations. This avoids rejecting valid station reductions due
@@ -554,7 +581,7 @@ def apply_proposal(study_id: str,proposal: dict,request: Request,response: Respo
                 if occupied: raise HTTPException(409,"O posto excedente continua ocupado após aplicar as alocações")
                 db.delete(station)
         pairs=[(p.predecessor_id,p.successor_id) for p in study.precedences]; validate_dag({e.id for e in study.elements},pairs)
-        study.version+=1; study.updated_by=actor.user.id
+        study.status="draft"; study.version+=1; study.updated_by=actor.user.id
         record_revision(db,study,actor,"Proposta de balanceamento aplicada",request.state.request_id,"optimizer.apply",before)
         result=study_payload(db,study); db.commit(); response.headers["ETag"]=study_etag(study); return result
     except Exception: db.rollback(); raise
@@ -566,54 +593,17 @@ def import_legacy(payload: dict,response: Response,request: Request,actor: Actor
     version=data.get("schemaVersion",data.get("version"))
     if version not in (1,2): raise HTTPException(422,"Somente os arquivos legados v1 e v2 são aceitos")
     if len(json.dumps(data))>5*1024*1024: raise HTTPException(413,"Arquivo excede 5 MiB")
-    if version==1:
-        ops=data.get("operations") or []; areas=[]; elements=[]
-        project=data.get("project") or {}; old_current=data.get("current") or []
-        ncur=max(1,min(20,len(old_current) or len(ops) or 1)); nfuture=max(1,min(20,len(data.get("future") or []) or 1))
-        for i,o in enumerate(ops):
-            cid=f"a{i+1}"; areas.append({"clientId":cid,"name":str(o.get("name") or "Operação")[:120],"sortOrder":i,
-                "operationalCostPerPieceCurrent":str(o.get("costCurrent",0)),"operationalCostPerPieceFuture":str(o.get("costFuture",0))})
-            elements.append({"clientId":f"e{i+1}","areaClientId":cid,"name":str(o.get("name") or "Operação"),"sortOrder":i,
-                "current":{"stationIndex":min(i+1,ncur),"vaSeconds":str(o.get("vaCurrent",0)),"nvaSeconds":str(o.get("nvaCurrent",0))},
-                "future":{"stationIndex":1,"vaSeconds":str(o.get("vaFuture",0)),"nvaSeconds":str(o.get("nvaFuture",0))}})
-        loads=[Decimal(0) for _ in range(nfuture)]
-        for e in sorted(elements,key=lambda x:(-(Decimal(x["future"]["vaSeconds"])+Decimal(x["future"]["nvaSeconds"])),x["sortOrder"])):
-            i=min(range(nfuture),key=lambda x:(loads[x],x)); e["future"]["stationIndex"]=i+1
-            loads[i]+=Decimal(e["future"]["vaSeconds"])+Decimal(e["future"]["nvaSeconds"])
-        p={"name":(project.get("name") or "Estudo importado")[:160],"productFamily":project.get("product","")[:120],
-           "shiftSeconds":project.get("shiftSeconds",27000),"demandPerShift":project.get("demand",0),"productiveDaysPerMonth":project.get("days",22),
-           "baselineUnitsPerDay":project.get("dailyVolume",0),"laborCostPerShiftCurrent":project.get("laborCurrent",0),"laborCostPerShiftFuture":project.get("laborFuture",0)}
-        payload2={"parameters":p,"stations":{"current":ncur,"future":nfuture},"areas":areas,"equipment":[],"elements":elements,"precedences":[]}
-    else:
-        project=data.get("project") or {}; areas=data.get("areas") or []; elements=data.get("elements") or []
-        if len(elements)>500 or len(areas)>100: raise HTTPException(413,"Limite de importação: 500 elementos e 100 áreas")
-        station=project.get("stations") or {"current":1,"future":1}
-        payload2={"parameters":{"name":project.get("name","Estudo importado"),"productFamily":project.get("productFamily",project.get("product","")),
-            "shiftSeconds":project.get("shiftSeconds",27000),"demandPerShift":project.get("demandPerShift",project.get("demand",0)),"productiveDaysPerMonth":project.get("productiveDaysPerMonth",project.get("days",22)),
-            "baselineUnitsPerDay":project.get("baselineUnitsPerDay",project.get("dailyVolume",0)),"laborCostPerShiftCurrent":project.get("laborCostPerShiftCurrent",project.get("laborCurrent",0)),"laborCostPerShiftFuture":project.get("laborCostPerShiftFuture",project.get("laborFuture",0))},
-            "stations":{"current":min(20,max(1,int(station.get("current",1)))),"future":min(20,max(1,int(station.get("future",1))))},
-            "areas":[{"id":a.get("id"),"clientId":a.get("id") or f"a{i}","name":a["name"],"sortOrder":a.get("sortOrder",i),"operationalCostPerPieceCurrent":a.get("operationalCostPerPieceCurrent",a.get("costCurrent",0)),"operationalCostPerPieceFuture":a.get("operationalCostPerPieceFuture",a.get("costFuture",0))} for i,a in enumerate(areas)]}
-        name_map={a["name"]:a["clientId"] for a in payload2["areas"]}
-        area_ids={str(a.get("id")):a["clientId"] for a in payload2["areas"] if a.get("id")}
-        payload2["elements"]=[]
-        for i,e in enumerate(elements):
-            area_name=e.get("area") or e.get("name")
-            area_client=area_ids.get(str(e.get("areaId"))) or name_map.get(area_name)
-            if area_client is None: raise HTTPException(422,f"Área sem correspondência para elements[{i}]")
-            current=e.get("current") or {"stationIndex":e.get("currentStation",1),"vaSeconds":e.get("vaCurrent",0),"nvaSeconds":e.get("nvaCurrent",0)}
-            future=e.get("future") or {"stationIndex":e.get("futureStation",1),"vaSeconds":e.get("vaFuture",0),"nvaSeconds":e.get("nvaFuture",0)}
-            payload2["elements"].append({"id":e.get("id"),"clientId":e.get("id") or f"e{i}","areaClientId":area_client,"name":e.get("name",area_name),"sortOrder":e.get("sortOrder",i),
-                "ergonomicZone":e.get("ergonomicZone","green"),"fixedEquipmentId":e.get("fixedEquipmentId"),"validationStatus":e.get("validationStatus","hypothesis"),"evidenceRef":e.get("evidenceRef"),
-                "current":{"stationIndex":int(current.get("stationIndex",1)),"vaSeconds":current.get("vaSeconds",0),"nvaSeconds":current.get("nvaSeconds",0)},
-                "future":{"stationIndex":int(future.get("stationIndex",1)),"vaSeconds":future.get("vaSeconds",0),"nvaSeconds":future.get("nvaSeconds",0)}})
-        payload2["equipment"]=[{"id":x.get("id"),"clientId":x.get("id"),"name":x["name"],"currentStationIndex":x.get("currentStationIndex"),"futureStationIndex":x.get("futureStationIndex")} for x in data.get("equipment",[])]
-        payload2["precedences"]=data.get("precedences",[])
+    from .services.legacy import legacy_study
     try:
-        parsed=CreateStudy.model_validate(payload2); source_hash=hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
+        parsed = legacy_study(data,version)
+    except (KeyError, TypeError, ArithmeticError, ValueError) as exc:
+        raise HTTPException(422, "Arquivo legado inválido: " + str(exc)[:300]) from exc
+    try:
+        source_hash=hashlib.sha256(json.dumps(data,sort_keys=True,ensure_ascii=False).encode()).hexdigest()
         study=create_study_rows(db,actor,parsed,request.state.request_id,"Importação de arquivo legado")
         db.add(AuditLog(organization_id=study.organization_id,study_id=study.id,actor_user_id=actor.user.id,action="study.import",entity_type="study",entity_id=study.id,after_data={"schemaVersion":version,"sourceSha256":source_hash,"areaCount":len(parsed.areas),"elementCount":len(parsed.elements)},request_id=request.state.request_id))
         db.commit(); response.headers["ETag"]=study_etag(study)
-        return {"study":study_payload(db,study),"migration":{"sourceVersion":version,"areaCount":len(parsed.areas),"elementCount":len(parsed.elements),"sourceSha256":source_hash,"precedencesCreated":0}}
+        return {"study":study_payload(db,study),"migration":{"sourceVersion":version,"areaCount":len(parsed.areas),"elementCount":len(parsed.elements),"sourceSha256":source_hash,"precedencesCreated":len(parsed.precedences)}}
     except Exception: db.rollback(); raise
 
 
@@ -633,7 +623,7 @@ def revision_detail(study_id: str,revision_number: int,actor: Actor=Depends(acto
 @app.post("/api/v1/studies/{study_id}/approve")
 def approve(study_id: str,payload: dict,request: Request,response: Response,if_match: str | None=Header(default=None,alias="If-Match"),
             actor: Actor=Depends(require_role("admin")),db: Session=Depends(get_db)):
-    study=load_study(db,study_id,actor); require_version(study,if_match)
+    study=load_study(db,study_id,actor,lock=True); require_version(study,if_match)
     if not payload.get("comment") or len(payload["comment"])>1000: raise HTTPException(422,"Comentário de aprovação obrigatório, até 1000 caracteres")
     before={"status":study.status}; study.status="approved"; study.version+=1; study.updated_by=actor.user.id
     record_revision(db,study,actor,"Estudo aprovado: "+payload["comment"],request.state.request_id,"study.approve",before)
@@ -644,3 +634,106 @@ def approve(study_id: str,payload: dict,request: Request,response: Response,if_m
 def audit(study_id: str,actor: Actor=Depends(actor_context),db: Session=Depends(get_db)):
     study=load_study(db,study_id,actor)
     return [{"id":a.id,"action":a.action,"entityType":a.entity_type,"actorUserId":a.actor_user_id,"before":a.before_data,"after":a.after_data,"requestId":a.request_id,"occurredAt":a.occurred_at} for a in db.query(AuditLog).filter_by(study_id=study.id).order_by(AuditLog.occurred_at.desc()).limit(200).all()]
+
+
+@app.get("/api/v1/session")
+def session_details(actor: Actor = Depends(actor_context)):
+    return {"userId": actor.user.id, "organizationId": actor.organization_id,
+            "displayName": actor.user.display_name, "role": actor.role}
+
+
+@app.put("/api/v1/studies/{study_id}")
+def replace_study(study_id: str, payload: CreateStudy, request: Request, response: Response,
+                  if_match: str | None = Header(None, alias="If-Match"),
+                  key: UUID | None = Header(None, alias="Idempotency-Key"),
+                  actor: Actor = Depends(require_role("engineer", "admin")), db: Session = Depends(get_db)):
+    study = load_study(db, study_id, actor, lock=True)
+    if payload.studyId and str(payload.studyId) != study_id:
+        raise HTTPException(422, "Identidade do estudo divergente")
+    if key and db.query(MutationReceipt).filter_by(study_id=study.id, client_mutation_id=str(key)).first():
+        response.headers["ETag"] = study_etag(study)
+        return study_payload(db, study)
+    if payload.stations.future>max(12,study.future_station_count) or payload.stations.current>20:
+        raise HTTPException(422,"Quantidade de postos fora da faixa")
+    require_version(study, if_match)
+    before = study_payload(db, study)
+    old = {e.id: e.ergonomic_exception for e in study.elements}
+    previous_station = {e["id"]: e["future"]["stationIndex"] for e in before["elements"]}
+    assigned = {str(e.id): e.future.stationIndex for e in payload.elements}
+    moved = {identifier for identifier, pos in assigned.items() if identifier in previous_station and previous_station[identifier] != pos}
+    for edge in payload.precedences:
+        a,b = str(edge.predecessorId), str(edge.successorId)
+        if (a in moved or b in moved) and assigned.get(a, 0)>assigned.get(b, 0):
+            raise HTTPException(422,"Movimento viola a precedência técnica")
+    resources = {str(e.id): e for e in payload.equipment}
+    for e in payload.elements:
+        identifier = str(e.id)
+        if e.fixedEquipmentId and resources[str(e.fixedEquipmentId)].futureStationIndex not in (None,e.future.stationIndex):
+            raise HTTPException(422, "Movimento incompatível com equipamento fixo")
+        if identifier in moved and e.ergonomicZone == "red" and not valid_exception(old[identifier]):
+            raise HTTPException(422, "Movimento em zona vermelha exige autorização vigente")
+        if e.validationStatus == "validated" and not e.evidenceRef:
+            raise HTTPException(422,"Validação exige referência de evidência")
+    try:
+        for model in (Precedence, ElementAssignment, WorkElement, Station, EquipmentResource, Area):
+            db.query(model).filter_by(study_id=study.id).delete(synchronize_session="fetch")
+        db.flush()
+        p = payload.parameters
+        mapping = {"name":"name","productFamily":"product_family","shiftSeconds":"shift_seconds","demandPerShift":"demand_per_shift",
+                   "productiveDaysPerMonth":"productive_days_per_month","baselineUnitsPerDay":"baseline_units_per_day",
+                   "laborCostPerShiftCurrent":"labor_cost_current","laborCostPerShiftFuture":"labor_cost_future",
+                   "oeePct":"oee_pct","seasonalityPct":"seasonality_pct","capex":"capex"}
+        for field, attr in mapping.items():
+            setattr(study, attr, getattr(p,field))
+        study.workspace_metadata = payload.workspace.model_dump(mode="json")
+        study.current_station_count, study.future_station_count = payload.stations.current, payload.stations.future
+        write_graph(db, study, actor, payload)
+        for item in db.query(WorkElement).filter_by(study_id=study.id):
+            if old.get(item.id): item.ergonomic_exception = old[item.id]
+            if item.validation_status == "validated":
+                item.validated_by, item.validated_at = actor.user.id, datetime.now(timezone.utc)
+        study.status, study.updated_by, study.version = "draft", actor.user.id, study.version+1
+        record_revision(db,study,actor,"Edição do estudo",request.state.request_id,"study.replace",before,str(key) if key else None)
+        result = study_payload(db,study)
+        if key: db.add(MutationReceipt(study_id=study.id,client_mutation_id=str(key),response=result))
+        db.commit()
+        response.headers["ETag"] = study_etag(study)
+        return result
+    except Exception:
+        db.rollback()
+        raise
+
+
+@app.put("/api/v1/studies/{study_id}/elements/{element_id}/ergonomic-exception")
+def ergonomic_exception(study_id: str, element_id: str, payload: dict, request: Request, response: Response,
+                        if_match: str | None=Header(None,alias="If-Match"),
+                        actor: Actor=Depends(require_role("admin")), db: Session=Depends(get_db)):
+    study=load_study(db,study_id,actor,lock=True)
+    require_version(study,if_match)
+    element=next((e for e in study.elements if e.id==element_id),None)
+    if not element: raise HTTPException(404,"Elemento não encontrado")
+    data={"reason":str(payload.get("reason","")).strip()[:300],"expiresAt":str(payload.get("expiresAt","")),"approvedBy":actor.user.display_name}
+    if not valid_exception(data): raise HTTPException(422,"Informe o motivo e uma validade futura com fuso horário")
+    before=study_payload(db,study)
+    element.ergonomic_exception=data
+    study.version+=1
+    study.status="draft"
+    study.updated_by=actor.user.id
+    record_revision(db,study,actor,"Exceção ergonômica autorizada",request.state.request_id,"ergonomic.approve",before)
+    db.commit()
+    response.headers["ETag"]=study_etag(study)
+    return study_payload(db,study)
+
+
+@app.delete("/api/v1/studies/{study_id}",status_code=204)
+def archive_study(study_id:str,request:Request,if_match:str|None=Header(None,alias="If-Match"),
+                  actor:Actor=Depends(require_role("engineer","admin")),db:Session=Depends(get_db)):
+    study=load_study(db,study_id,actor)
+    if study.status=="archived": return Response(status_code=204)
+    study=load_study(db,study_id,actor,lock=True)
+    require_version(study,if_match)
+    before=study_payload(db,study)
+    study.status,study.updated_by,study.version="archived",actor.user.id,study.version+1
+    record_revision(db,study,actor,"Estudo removido do portfólio",request.state.request_id,"study.archive",before)
+    db.commit()
+    return Response(status_code=204)

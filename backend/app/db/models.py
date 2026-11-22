@@ -48,6 +48,10 @@ class Study(Base):
     baseline_units_per_day: Mapped[float] = mapped_column(Numeric(12, 3), nullable=False, default=0)
     labor_cost_current: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
     labor_cost_future: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    oee_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=100)
+    seasonality_pct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, default=0)
+    capex: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False, default=0)
+    workspace_metadata: Mapped[dict | None] = mapped_column(JSON)
     current_station_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     future_station_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="draft")
@@ -63,6 +67,7 @@ class Study(Base):
     __table_args__ = (
         CheckConstraint("shift_seconds > 0"), CheckConstraint("demand_per_shift >= 0"),
         CheckConstraint("productive_days_per_month between 0 and 31"),
+        CheckConstraint("oee_pct between 10 and 100"), CheckConstraint("seasonality_pct between -30 and 50"), CheckConstraint("capex >= 0"),
         CheckConstraint("current_station_count between 1 and 100"), CheckConstraint("future_station_count between 1 and 100"),
     )
 

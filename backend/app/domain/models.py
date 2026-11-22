@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime, timezone
 
 from decimal import Decimal
 from typing import Literal
@@ -29,6 +30,9 @@ class Parameters(StrictModel):
     baselineUnitsPerDay: Dec = Field(ge=0, max_digits=12, decimal_places=3, default=Decimal(0))
     laborCostPerShiftCurrent: Dec = Field(ge=0, max_digits=14, decimal_places=2, default=Decimal(0))
     laborCostPerShiftFuture: Dec = Field(ge=0, max_digits=14, decimal_places=2, default=Decimal(0))
+    oeePct: Dec = Field(ge=10, le=100, max_digits=5, decimal_places=2, default=Decimal(100))
+    seasonalityPct: Dec = Field(ge=-30, le=50, max_digits=5, decimal_places=2, default=Decimal(0))
+    capex: Dec = Field(ge=0, max_digits=14, decimal_places=2, default=Decimal(0))
 
 
 class StationCounts(StrictModel):
@@ -79,9 +83,24 @@ class EquipmentInput(StrictModel):
     futureStationIndex: int | None = Field(default=None, ge=1, le=100)
 
 
+class LocalEvent(StrictModel):
+    ts: str = Field(max_length=60)
+    actor: str = Field(max_length=80)
+    action: str = Field(max_length=130)
+    detail: str = Field(max_length=1000)
+
+
+class WorkspaceMetadata(StrictModel):
+    author: str = Field(default="Engenharia", max_length=80)
+    revision: str = Field(default="Rev. 1", max_length=32)
+    cv: float = Field(default=.08, ge=0, le=10)
+    auditLog: list[LocalEvent] = Field(default_factory=list, max_length=1000)
+
+
 class CreateStudy(StrictModel):
     studyId: UUID | None = None
     parameters: Parameters
+    workspace: WorkspaceMetadata = Field(default_factory=WorkspaceMetadata)
     stations: StationCounts
     areas: list[AreaInput] = Field(default_factory=list, max_length=100)
     elements: list[WorkElementInput] = Field(default_factory=list, max_length=500)
@@ -92,6 +111,8 @@ class CreateStudy(StrictModel):
     def assignments_exist(self):
         equipment_ids = {item.id for item in self.equipment if item.id is not None}
         for element in self.elements:
+            if element.validationStatus=="validated" and not element.evidenceRef:
+                raise ValueError("Validação exige referência de evidência")
             if element.current.stationIndex > self.stations.current:
                 raise ValueError(f"Posto atual inválido para {element.name}")
             if element.future.stationIndex > self.stations.future:
@@ -155,9 +176,13 @@ def calculate(study: dict) -> dict:
     elements = study["elements"]
     station_counts = study["stations"]
     shift = Decimal(str(p["shiftSeconds"]))
-    demand = Decimal(str(p["demandPerShift"]))
-    takt = shift / demand if demand > 0 else None
-    metrics: dict = {"taktSeconds": takt, "current": {}, "future": {}}
+    oee = Decimal(str(p.get("oeePct", 100))) / Decimal(100)
+    seasonality = Decimal(str(p.get("seasonalityPct", 0))) / Decimal(100)
+    effective_shift = shift * oee
+    demand = Decimal(str(p["demandPerShift"])) * (Decimal(1) + seasonality)
+    takt = effective_shift / demand if demand > 0 else None
+    metrics: dict = {"taktSeconds": takt, "effectiveShiftSeconds": effective_shift, "effectiveDemandPerShift": demand,
+                     "seasonalityPct": seasonality * Decimal(100), "current": {}, "future": {}}
     for scenario in ("current", "future"):
         count = station_counts[scenario]
         loads = [Decimal(0) for _ in range(count)]
@@ -175,16 +200,37 @@ def calculate(study: dict) -> dict:
             group["total"] += total
         cycle = max(loads, default=Decimal(0))
         bottleneck = [i + 1 for i, load in enumerate(loads) if load == cycle] if cycle > 0 else []
-        capacity = shift / cycle if cycle > 0 else None
+        capacity = effective_shift / cycle if cycle > 0 else None
         labor = Decimal(str(p["laborCostPerShiftCurrent" if scenario == "current" else "laborCostPerShiftFuture"]))
         cmo = labor / capacity if capacity else None
         ops_cost = sum((Decimal(str(a["operationalCostPerPieceCurrent" if scenario == "current" else "operationalCostPerPieceFuture"])) for a in areas), Decimal(0))
+        total_work = sum(loads, Decimal(0))
+        efficiency = total_work / (Decimal(count) * cycle) * Decimal(100) if cycle > 0 else None
+        balance_delay = Decimal(100) - efficiency if efficiency is not None else None
+        minimum_stations = max(1, int((total_work / takt).to_integral_value(rounding="ROUND_CEILING"))) if takt else None
+        smoothness = (sum(((cycle - load) ** 2 for load in loads), Decimal(0))).sqrt() if cycle > 0 else None
         metrics[scenario] = {"stationLoadsSeconds": loads, "cycleSeconds": cycle if cycle > 0 else None,
                              "bottleneckStations": bottleneck, "theoreticalCapacityPerShift": capacity,
                              "cmoPerPiece": cmo, "operationalCostPerPiece": ops_cost,
+                             "totalWorkSeconds": total_work, "balanceEfficiencyPct": efficiency,
+                             "balanceDelayPct": balance_delay, "minimumStationsTheoretical": minimum_stations,
+                             "smoothnessIndexSeconds": smoothness,
                              "meetsTakt": (cycle <= takt) if takt is not None and cycle > 0 else None,
                              "areas": area_totals}
     current_cmo = metrics["current"]["cmoPerPiece"]
     future_cmo = metrics["future"]["cmoPerPiece"]
-    metrics["monthlyLaborSavingEstimate"] = ((current_cmo - future_cmo) * Decimal(str(p["baselineUnitsPerDay"])) * Decimal(p["productiveDaysPerMonth"])) if current_cmo is not None and future_cmo is not None else None
+    monthly = ((current_cmo - future_cmo) * Decimal(str(p["baselineUnitsPerDay"])) * (Decimal(1) + seasonality) * Decimal(p["productiveDaysPerMonth"])) if current_cmo is not None and future_cmo is not None else None
+    capex = Decimal(str(p.get("capex", 0)))
+    metrics["monthlyLaborSavingEstimate"] = monthly
+    metrics["paybackMonths"] = capex / monthly if capex > 0 and monthly is not None and monthly > 0 else None
+    metrics["annualRoiPct"] = ((monthly * Decimal(12) - capex) / capex * Decimal(100)) if capex > 0 and monthly is not None else None
     return metrics
+
+
+def valid_exception(data):
+    if not isinstance(data,dict): return False
+    try:
+        until=datetime.fromisoformat(data["expiresAt"].replace("Z","+00:00"))
+        return bool(data["reason"] and data["approvedBy"] and until > datetime.now(timezone.utc))
+    except (KeyError, TypeError, ValueError):
+        return False

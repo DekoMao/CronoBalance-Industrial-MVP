@@ -3,7 +3,7 @@ from ortools.sat.python import cp_model
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from ..db.models import ElementAssignment, EquipmentResource, Station
-from ..domain.models import OptimizeRequest, validate_dag
+from ..domain.models import OptimizeRequest, validate_dag, valid_exception
 
 
 def optimize_study(db: Session, study, request: OptimizeRequest) -> dict:
@@ -15,7 +15,7 @@ def optimize_study(db: Session, study, request: OptimizeRequest) -> dict:
     try: topo = validate_dag(set(by_id), edges)
     except ValueError as exc: raise HTTPException(422, {"code":"PRECEDENCE_CYCLE", "detail":str(exc)}) from exc
     for e in elements:
-        if e.ergonomic_zone == "red" and not e.ergonomic_exception:
+        if e.ergonomic_zone == "red" and not valid_exception(e.ergonomic_exception):
             raise HTTPException(422, {"code":"ERGONOMIC_RESTRICTION", "elementId":e.id,
                 "detail":"Elemento em zona ergonômica vermelha exige exceção aprovada com motivo e validade."})
     assignments={(a.element_id,a.scenario):a for a in db.query(ElementAssignment).filter_by(study_id=study.id).all()}
@@ -28,7 +28,8 @@ def optimize_study(db: Session, study, request: OptimizeRequest) -> dict:
     if any(x != x.to_integral_value() for x in raw_weights):
         raise HTTPException(422,{"code":"TIME_PRECISION","detail":"O solver exige tempos com até 3 casas decimais."})
     weights=[int(x) for x in raw_weights]
-    takt=Decimal(str(study.shift_seconds))/Decimal(str(study.demand_per_shift)) if study.demand_per_shift>0 else None
+    demand = Decimal(str(study.demand_per_shift)) * (1 + Decimal(str(study.seasonality_pct)) / 100)
+    takt = Decimal(str(study.shift_seconds)) * Decimal(str(study.oee_pct)) / 100 / demand if demand else None
     threshold=request.cycleTargetSeconds or (takt if request.meetTakt else None)
     max_count=max(request.targetStationCount, request.maxStationCount)
     start_count=request.targetStationCount

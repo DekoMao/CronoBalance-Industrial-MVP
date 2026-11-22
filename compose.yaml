@@ -25,7 +25,7 @@ services:
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
     depends_on:
       db: {condition: service_healthy}
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     restart: unless-stopped
   web:
     build:
@@ -36,7 +36,7 @@ services:
         VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY:-}
         VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID:-}
     depends_on: [api]
-    ports: ["4173:80"]
+    ports: ["127.0.0.1:4173:80"]
     restart: unless-stopped
 volumes:
   cronobalance_pgdata:

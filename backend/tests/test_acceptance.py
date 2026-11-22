@@ -1,3 +1,4 @@
+from decimal import Decimal
 from uuid import uuid4
 
 
@@ -153,3 +154,82 @@ def test_create_retries_with_same_client_study_id_are_idempotent(client, auth_he
     assert first.status_code == 201
     assert replay.status_code == 200
     assert replay.json()["id"] == first.json()["id"]
+
+
+def test_oee_seasonality_and_capex_are_applied_to_effective_metrics(client, auth_headers):
+    raw = payload(demand="180")
+    raw["parameters"].update({"oeePct": "80", "seasonalityPct": "25", "capex": "5000"})
+    created = client.post("/api/v1/studies", headers=auth_headers, json=raw)
+    assert created.status_code == 201, created.text
+    result = created.json()
+    assert Decimal(result["parameters"]["taktSeconds"]) == Decimal("96")
+    assert Decimal(result["metrics"]["effectiveShiftSeconds"]) == Decimal("21600")
+    assert Decimal(result["metrics"]["effectiveDemandPerShift"]) == Decimal("225")
+    assert Decimal(result["metrics"]["future"]["theoreticalCapacityPerShift"]) == Decimal("432")
+    assert result["metrics"]["paybackMonths"] is not None
+    assert result["metrics"]["annualRoiPct"] is not None
+
+
+def test_oee_and_seasonality_ranges_are_validated(client, auth_headers):
+    raw = payload()
+    raw["parameters"]["oeePct"] = "9.99"
+    response = client.post("/api/v1/studies", headers=auth_headers, json=raw)
+    assert response.status_code == 422
+    raw = payload()
+    raw["parameters"]["seasonalityPct"] = "50.01"
+    response = client.post("/api/v1/studies", headers=auth_headers, json=raw)
+    assert response.status_code == 422
+
+
+def test_workspace_revisions_conflict_and_replay(client, auth_headers):
+    state = payload()
+    state["workspace"] = {"revision": "Rev. 1", "cv": .1}
+    created = client.post("/api/v1/studies", headers=auth_headers, json=state)
+    url = "/api/v1/studies/" + created.json()["id"]
+    state["parameters"]["baselineUnitsPerDay"] = "35.2"
+    state["elements"][0]["future"]["nvaSeconds"] = "17.5"
+    headers = {**auth_headers, "If-Match":created.headers["etag"], "Idempotency-Key":str(uuid4())}
+    edited = client.put(url, headers=headers, json=state)
+    assert edited.status_code == 200, edited.text
+    assert Decimal(edited.json()["metrics"]["future"]["cycleSeconds"]) == Decimal("57.5")
+    assert edited.json()["areas"][0]["id"] == state["areas"][0]["id"]
+    assert client.put(url, headers=headers, json=state).json()["version"] == 2
+    assert client.put(url, headers={**headers, "Idempotency-Key":str(uuid4())}, json=state).status_code == 412
+    assert len(client.get(url+"/revisions",headers=auth_headers).json())==2
+    assert client.get(url+"/revisions/1",headers=auth_headers).json()["version"]==1
+    assert client.delete(url,headers={**auth_headers,"If-Match":edited.headers["etag"]}).status_code==204
+    assert not client.get("/api/v1/studies",headers=auth_headers).json()["items"]
+
+
+def test_legacy_named_ids_and_dag_are_translated(client,auth_headers):
+    data={"version":2,"project":{"name":"Legado","stations":{"current":2,"future":2}},"areas":[{"id":"a1","name":"Área A"}],
+          "elements":[{"id":name,"areaId":"a1","name":name,"futureStation":i+1} for i,name in enumerate(["e01","e02"])],
+          "precedences":[["e01","e02"]]}
+    response=client.post("/api/v1/studies/import-legacy",headers=auth_headers,json=data)
+    assert response.status_code==201,response.text
+    assert len(response.json()["study"]["precedences"])==1
+    data["project"]["stations"]["future"]=21
+    assert client.post("/api/v1/studies/import-legacy",headers=auth_headers,json=data).status_code==422
+
+
+def test_roles_and_organizations_isolate_studies(client,auth_headers):
+    from app.db.session import SessionLocal
+    from app.db.models import Organization, User
+    from app.security import actor_context, Actor
+    from app.main import app
+    created=create(client,auth_headers)
+    url="/api/v1/studies/"+created.json()["id"]
+    with SessionLocal() as db:
+        user=db.query(User).first()
+        org=db.query(Organization).first()
+        other=Organization(name="Unidade B",slug="unidade-b")
+        db.add(other);db.commit()
+        try:
+            app.dependency_overrides[actor_context]=lambda:Actor(user,org.id,"viewer")
+            assert client.get(url).status_code==200
+            assert client.put(url,json=payload()).status_code==403
+            app.dependency_overrides[actor_context]=lambda:Actor(user,other.id,"admin")
+            assert client.get(url).status_code==404
+            assert client.get("/api/v1/studies").json()["items"]==[]
+        finally:
+            app.dependency_overrides.pop(actor_context,None)

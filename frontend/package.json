@@ -1,17 +1,19 @@
 {
   "name": "cronobalance-industrial-web",
-  "version": "2.4.0",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
-    "build": "tsc -b && vite build",
-    "preview": "vite preview --host 0.0.0.0"
+    "build": "tsc -b && vite build && node scripts/package.mjs",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "playwright test"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@fontsource-variable/inter": "5.2.8",
     "decimal.js": "^10.6.0",
     "dexie": "^4.2.1",
     "oidc-client-ts": "^3.3.0",
@@ -20,10 +22,12 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/node": "^26.6.6",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "3.4.17",
     "typescript": "~5.8.3",
     "vite": "^6.3.5"
   }
