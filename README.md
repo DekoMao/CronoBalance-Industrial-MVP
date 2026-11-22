@@ -1,83 +1,111 @@
 # CronoBalance Industrial
 
-MVP PWA para cronoanálise, comparação entre estado atual e futuro e leitura de capacidade e custos. A interface segue a composição da referência: cabeçalho industrial azul, gráfico atual em vermelho, cenário futuro em verde, tabela de operações, indicadores e faixa de resultados.
+Aplicação PWA de cronoanálise e balanceamento de linhas, evoluída do MVP local-first para uma arquitetura web com front-end offline, API corporativa, PostgreSQL, revisões, auditoria e solver CP-SAT.
 
-## Acesso web
+## Acesso publicado
 
-O GitHub Actions publica a PWA em GitHub Pages quando há atualização na branch `main`:
+A interface está publicada no GitHub Pages: <https://dekomao.github.io/CronoBalance-Industrial-MVP/>. O Pages hospeda a interface estática; por padrão ela funciona local-first no navegador e **não sincroniza com uma nuvem**. A sincronização corporativa exige API acessível por HTTPS, autenticação OIDC e variáveis de ambiente de implantação configuradas. A URL pública não deve receber dados industriais confidenciais.
 
-**https://dekomao.github.io/CronoBalance-Industrial-MVP/**
+## O que está implementado
 
-Na primeira publicação, confirme em **Settings → Pages** que a origem está definida como **GitHub Actions**. Consulte a aba **Actions** para acompanhar a conclusão do deploy. O repositório é público e o site também; não informe dados confidenciais. Os estudos ficam no armazenamento local do navegador e não são enviados ao GitHub.
+- Interface React + TypeScript responsiva, PWA instalável, tema claro/escuro e gráficos SVG responsivos, seguindo a identidade industrial navy/dourado e o layout de referência.
+- Persistência local IndexedDB por Dexie, fila de alterações offline e estado de sincronização/conflito.
+- API REST FastAPI com PostgreSQL, isolamento por organização, papéis admin/engenheiro/visualizador, autenticação OIDC, ETags/If-Match, deduplicação de mutações em lote, revisões e auditoria.
+- Entidades normalizadas para organização, usuário, estudo, revisão, área, elemento de trabalho, posto, alocação, equipamento fixo, precedência e auditoria.
+- Edição em lote dos elementos, importação/migração JSON v1/v2, exportação JSON/CSV/XLSX e snapshots versionados.
+- Balanceador CP-SAT que respeita precedência DAG, equipamento fixo, exceções ergonômicas aprovadas, quantidade de postos e limite de ciclo/Takt.
+- Docker Compose com PostgreSQL, migração Alembic, API e front-end para execução local em rede.
 
-## O que está funcionando
+## Regras de cálculo
 
-- Cadastro de elementos de trabalho, tempos VA/NVA e alocação atual/futura por posto.
-- Gráficos, ciclos, totais VA/NVA e atendimento ao takt calculados a partir da mesma lista de elementos; não há edição isolada dos tempos dos gráficos.
-- Edição dos custos operacionais atribuídos às áreas, separados do cálculo de mão de obra por peça.
-- Cálculo de takt, ciclo da linha, capacidade por turno, custo estimado por peça e economia mensal estimada.
-- Sugestão de balanceamento futuro por distribuição heurística das tarefas pelo posto com menor carga.
-- Adição/remoção de áreas, elementos e postos.
-- Salvamento automático no navegador e backup/restauração por arquivo JSON.
-- PWA instalável e shell offline depois da primeira abertura em endereço `localhost` ou HTTPS.
-- Layout responsivo para desktop, tablet e celular.
+- Tempo do elemento: `VA + NVA` para cada cenário.
+- Carga do posto: soma dos elementos alocados no posto.
+- Ciclo da linha: maior carga entre os postos; esse posto é o gargalo.
+- Takt: tempo disponível por turno dividido pela demanda por turno. Demanda zero torna o Takt não avaliável.
+- Capacidade teórica: tempo disponível por turno dividido pelo ciclo; ciclo zero torna a capacidade não avaliável.
+- CMO por peça: custo da equipe por turno dividido pela capacidade teórica. O custo operacional alocado por área é apresentado separadamente e não entra no CMO.
+- Economia mensal estimada: `(CMO atual − CMO futuro) × produção base/dia × dias produtivos/mês`.
+- Totais, gráficos, ciclo e KPIs são derivados dos elementos; não são editáveis diretamente.
 
-## Executar localmente
+## Executar localmente com Docker
 
-Requer Python 3.10 ou superior. Abra um terminal dentro da pasta e execute:
-
-```bash
-python3 -m http.server 4173
-```
-
-No Windows, também é possível abrir `start-local.bat`. Acesse `http://localhost:4173`.
-
-## Executar com Docker
-
-Requer Docker Desktop e o plugin Docker Compose:
+Requer Docker Desktop com Compose v2. Na raiz do repositório:
 
 ```bash
-docker compose up --build -d
+cp .env.example .env
+docker compose up --build
 ```
 
-Abra `http://localhost:8080`. Para trocar a porta, execute `PORT=8090 docker compose up --build -d` (PowerShell: `$env:PORT=8090; docker compose up --build -d`). Para parar: `docker compose down`.
+Acesse `http://localhost:4173`. A API fica em `http://localhost:8000`; documentação OpenAPI em `http://localhost:8000/api/v1/openapi.json`. O perfil local cria uma organização e um usuário de demonstração e usa o token indicado em `.env.example`. Esse token é exclusivamente local: defina `APP_ENV=production`, OIDC e segredos próprios antes de expor o serviço fora da máquina/rede confiável.
 
-O container serve os arquivos estáticos. Para disponibilizar a aplicação em uma rede industrial ou na internet, publique a imagem em uma infraestrutura aprovada, configure DNS/HTTPS no proxy ou gateway corporativo e libere apenas os segmentos de rede necessários. O navegador dos usuários deve acessar o endereço HTTPS para instalar a PWA fora do modo localhost.
+Para parar sem remover os dados do banco: `docker compose down`. Para apagar permanentemente o volume PostgreSQL de demonstração: `docker compose down -v`.
 
-## Deploy pelo GitHub Actions
+## Executar somente o front-end
 
-O workflow `.github/workflows/deploy-pages.yml` copia somente os arquivos da aplicação para `_site`, envia esse diretório como artefato e publica no GitHub Pages. O README, arquivos de desenvolvimento e configuração Docker ficam fora do artefato do site. Os caminhos relativos permitem que a mesma aplicação funcione no Pages e no servidor local.
+Requer Node.js 20+:
 
-## Como os números são calculados
-
-- **Takt:** tempo disponível no turno ÷ demanda informada por turno.
-- **Ciclo da linha:** maior tempo entre os postos do cenário.
-- **Capacidade teórica por turno:** tempo disponível no turno ÷ ciclo da linha.
-- **Mão de obra teórica por peça:** custo de mão de obra informado para o turno ÷ capacidade teórica do mesmo cenário. O custo operacional por área é uma parcela diferente e não é somado a este indicador.
-- **Economia mensal estimada:** diferença de custo teórico por peça × produção base por dia × dias produtivos.
-- **Ciclo por posto:** soma VA + NVA dos elementos alocados naquele posto; o ciclo da linha é a maior dessas somas.
-- **Rebalancear:** ordena os elementos pelo tempo futuro, do maior para o menor, e aloca cada elemento ao posto com menor carga acumulada. É uma heurística, não um otimizador de precedências. Decomponha tarefas grandes e verifique precedências, ergonomia, qualidade, abastecimento e viabilidade física antes de aplicar.
-
-Os valores de abertura são um exemplo didático coerente: os tempos atuais e futuros por posto são somas dos elementos associados. O cenário futuro pressupõe redução de atividades NVA; trate essa redução como hipótese a validar, não como ganho já realizado. Atualize as premissas com dados cronometrados e custos validados. Os cálculos de capacidade são teóricos e não substituem OEE, perdas, refugo, microparadas, variação de operador, estudo de tolerância ou validação de Engenharia/Qualidade.
-
-## Armazenamento e limites desta versão
-
-Cada navegador guarda seu próprio projeto no armazenamento local do dispositivo. Exportar/importar JSON permite transportar um estudo entre dispositivos. A versão 0.2 migra estudos locais 0.1 e aceita arquivos JSON 0.1, recalculando ciclos a partir das operações e redistribuindo elementos futuros; confira a conversão após importar. **Ainda não há contas, acesso simultâneo, sincronização central, banco de dados de fábrica nem trilha de auditoria**; por isso, esta versão é adequada para avaliação de fluxo e piloto controlado, mas não deve ser tratada como sistema corporativo de registro oficial.
-
-## Próxima etapa para implantação multiusuário
-
-Manter esta interface como PWA e conectar a uma API central com autenticação corporativa e banco PostgreSQL. O modelo mínimo deve versionar organização, planta, linha, família de produto, estudos, operações, postos e medições; cada revisão precisa registrar autor, data, valores anteriores, aprovação e evidências. Adicionar perfis de acesso, auditoria imutável, backup/restore testado, segregação por planta, observabilidade, gestão de segredos e implantação redundante antes de escalar para uso operacional. O MVP não cria esses serviços nem inventa controles de segurança que ainda não existem.
-
-## Estrutura
-
-```text
-index.html            tela e componentes acessíveis
-styles.css            tema claro, gráficos e layout responsivo
-app.js                elementos, alocações, cálculos, edição e importação/exportação
-service-worker.js     cache da aplicação para uso offline
-manifest.webmanifest  instalação como PWA
-Dockerfile            imagem estática de produção
-compose.yaml          execução local/container
-nginx.conf            servidor e cabeçalhos básicos
-.github/workflows/    publicação automática pelo GitHub Pages
+```bash
+cd frontend
+npm ci
+npm run dev
 ```
+
+Acesse `http://localhost:5173`. Sem `VITE_API_BASE_URL`, os dados ficam neste navegador/dispositivo; a instalação PWA e a fila local não criam por si só uma nuvem compartilhada.
+
+## Configuração corporativa
+
+Copie `.env.example` para `.env` e configure valores reais antes de uma implantação online:
+
+| Variável | Finalidade |
+|---|---|
+| `POSTGRES_PASSWORD` | Senha forte do PostgreSQL |
+| `APP_ENV` | `production` desativa autenticação de demonstração |
+| `OIDC_ISSUER` | Emissor OIDC cujo endpoint JWKS valida os tokens da API |
+| `OIDC_AUDIENCE` | Audiência aceita pela API |
+| `OIDC_JWKS_URL` | URL JWKS opcional; vazia usa `jwks_uri` do discovery OIDC |
+| `VITE_API_BASE_URL` | URL HTTPS da API incluída no build do front-end |
+| `CORS_ORIGINS` | Origens HTTPS permitidas pela API, separadas por vírgula |
+| `VITE_OIDC_AUTHORITY` | Autoridade OIDC usada pelo cliente web |
+| `VITE_OIDC_CLIENT_ID` | Client ID público do cliente OIDC |
+
+O usuário OIDC precisa ser provisionado em `users` e associado a uma organização em `organization_memberships`. A API não cria associações corporativas automaticamente. O cliente OIDC deve permitir Authorization Code + PKCE e usar a URL de callback `${origem}/auth/callback`.
+
+O deployment do Pages desta branch é público e sem API configurada. Para sincronização multiusuário, hospede `api` e PostgreSQL em infraestrutura gerenciada pela organização e configure as variáveis de build/ambiente descritas acima.
+
+## API v1
+
+| Método e rota | Contrato |
+|---|---|
+| `GET /api/v1/health/live` | Liveness |
+| `GET /api/v1/health/ready` | Conectividade com PostgreSQL |
+| `GET /api/v1/studies` | Lista paginada por organização |
+| `POST /api/v1/studies` | Cria estudo e primeira revisão |
+| `GET /api/v1/studies/{id}` | Estudo, derivações e `ETag` |
+| `PATCH /api/v1/studies/{id}/elements/batch` | Atualização em lote; exige `If-Match` e `clientMutationId` |
+| `PUT /api/v1/studies/{id}/precedences` | Substitui o DAG após validar ciclos |
+| `POST /api/v1/studies/{id}/optimize` | Gera proposta CP-SAT para uma revisão |
+| `POST /api/v1/studies/{id}/optimization-proposals/apply` | Aplica proposta validada com controle de versão |
+| `POST /api/v1/studies/import-legacy` | Importa JSON legado v1/v2 (máx. 5 MiB, 500 elementos, 100 áreas e 20 postos/cenário) |
+| `GET /api/v1/studies/{id}/revisions` | Histórico de revisões |
+| `GET /api/v1/studies/{id}/revisions/{n}` | Snapshot imutável da revisão |
+| `POST /api/v1/studies/{id}/approve` | Aprovação por perfil admin com comentário obrigatório |
+| `GET /api/v1/studies/{id}/audit` | Trilha de auditoria recente |
+
+Mutação concorrente com ETag desatualizada retorna HTTP 412. Envie o ETag retornado pelo servidor em `If-Match`; não tente resolver conflitos sobrescrevendo silenciosamente a revisão remota.
+
+## Verificações
+
+```bash
+cd frontend && npm ci && npm run build
+cd ../backend && python -m pip install -r requirements.txt -r requirements-dev.txt && pytest
+```
+
+A suíte de backend cobre cálculos, DAG, alteração de NVA e gargalo, semáforo de Takt, bloqueio de posto ocupado, rebalanceamento com precedência, importação legada e conflito de revisão. O build de produção é executado também pelo GitHub Actions antes da publicação.
+
+## Limites de prontidão
+
+O repositório entrega uma base executável localmente e publicável como front-end estático. A operação corporativa compartilhada depende de provisionamento OIDC, segredo real de PostgreSQL, API HTTPS e hospedagem de backend. Antes de tratar propostas de balanceamento como padrão aprovado, valide os dados e as restrições da linha com Engenharia, Segurança, Ergonomia e responsáveis pelo processo. O solver otimiza a alocação matemática declarada; não certifica segurança ou viabilidade física por conta própria.
+
+## Licença
+
+Consulte a licença definida pelo repositório antes de redistribuir ou operar como produto comercial.

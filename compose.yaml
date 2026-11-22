@@ -1,13 +1,42 @@
 services:
-  cronobalance:
-    build: .
-    image: cronobalance-industrial:0.1
-    container_name: cronobalance-industrial
-    restart: unless-stopped
-    ports:
-      - "${PORT:-8080}:80"
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: cronobalance
+      POSTGRES_USER: cronobalance
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-only-change-me}
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
-      interval: 30s
+      test: ["CMD-SHELL", "pg_isready -U cronobalance -d cronobalance"]
+      interval: 5s
       timeout: 3s
-      retries: 3
+      retries: 20
+    volumes: ["cronobalance_pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped
+  api:
+    build: ./backend
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-local-dev-token-change-me}
+      DATABASE_URL: postgresql+psycopg://cronobalance:${POSTGRES_PASSWORD:-local-only-change-me}@db:5432/cronobalance
+      AUTO_CREATE_SCHEMA: "false"
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:4173,http://localhost:5173}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["8000:8000"]
+    restart: unless-stopped
+  web:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+        VITE_DEV_AUTH_TOKEN: ${DEV_AUTH_TOKEN:-local-dev-token-change-me}
+        VITE_OIDC_AUTHORITY: ${VITE_OIDC_AUTHORITY:-}
+        VITE_OIDC_CLIENT_ID: ${VITE_OIDC_CLIENT_ID:-}
+    depends_on: [api]
+    ports: ["4173:80"]
+    restart: unless-stopped
+volumes:
+  cronobalance_pgdata:
