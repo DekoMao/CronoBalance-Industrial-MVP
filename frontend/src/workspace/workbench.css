@@ -17,3 +17,7 @@ main{min-width:0;max-width:1600px!important}.station-dropzone{min-width:0}.cb-di
 #sync-status-btn[data-state=local] span:first-child{background:#8fb0c4}
 #sync-status-btn[data-state=conflict] span:first-child{background:#f4ba25}
 dialog[open]::backdrop{backdrop-filter:blur(2px)}
+
+.cb-chart-state{font-weight:650;font-size:.65rem;color:var(--text-secondary)}
+#chart-card[data-state=over]{border-color:#a94e4a}.cb-chart-state::before{content:'●';margin-right:.25rem}
+#chart-card[data-state=over] .cb-chart-state{color:var(--delta-bad)}#chart-card[data-state=within] .cb-chart-state{color:var(--delta-good)}

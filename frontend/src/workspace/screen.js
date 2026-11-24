@@ -1,5 +1,6 @@
 
 import './workbench.css';
+import EngineeringWorker from './engineering.worker?worker&inline';
 import { normalize, importSheets, uid, checkMove, validateGraph, asDomain, validException } from './model';
 import { openStore, savePortfolio, connection, sync } from './store';
 import { openTools } from './tools';
@@ -11,6 +12,15 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
     const STORAGE_KEY = 'cronobalance_sdd_v2_0_studies';
     const LEGACY_STORAGE_KEY = 'cronobalance_sdd_v1_5_studies';
     let riskCache={};
+    let jobId=0;
+    function engineeringJob(method,study,iterations,cv=.08){
+      const worker=new EngineeringWorker(),id=++jobId;
+      return new Promise((resolve,reject)=>{
+        worker.onmessage=event=>{if(event.data.id!==id)return;worker.terminate();event.data.error?reject(Error(event.data.error)):resolve(event.data.value)};
+        worker.onerror=event=>{worker.terminate();reject(Error(event.message||'Falha ao executar a simulação local.'))};
+        worker.postMessage({id,method,study,iterations,cv});
+      });
+    }
     let chartMode = 'future';
     let expandedAreas = new Set();
     let workFilterQuery = '';
@@ -304,13 +314,13 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       const balanceDelayFuture = Math.max(0, 100 - efficiencyFuture);
       const minTheoreticalStations = takt > 0 ? Math.max(1, Math.ceil(totalWorkFuture / takt)) : 1;
 
-      const capCurrent = currentCycle > 0 ? effectiveShiftSeconds / currentCycle : 0;
-      const capFuture = futureCycle > 0 ? effectiveShiftSeconds / futureCycle : 0;
+      const capCurrent = currentCycle > 0 ? effectiveShiftSeconds / currentCycle : NaN;
+      const capFuture = futureCycle > 0 ? effectiveShiftSeconds / futureCycle : NaN;
       const cyclePctChange = currentCycle > 0 ? ((futureCycle / currentCycle) - 1) * 100 : 0;
       const capPctChange = capCurrent > 0 ? ((capFuture / capCurrent) - 1) * 100 : 0;
 
-      const unitLaborCurrent = capCurrent > 0 ? safeNum(study.laborCurrent) / capCurrent : 0;
-      const unitLaborFuture = capFuture > 0 ? safeNum(study.laborFuture) / capFuture : 0;
+      const unitLaborCurrent = capCurrent > 0 ? safeNum(study.laborCurrent) / capCurrent : NaN;
+      const unitLaborFuture = capFuture > 0 ? safeNum(study.laborFuture) / capFuture : NaN;
       const unitLaborSaving = unitLaborCurrent - unitLaborFuture;
 
       const opsCostCurrent = study.areas.reduce((s, a) => s + safeNum(a.costCurrent), 0);
@@ -320,7 +330,7 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       const monthlySaving = unitLaborSaving * effectiveDailyVolume * safeNum(study.days);
       const capex = safeNum(study.capex);
       const paybackMonths = (capex > 0 && monthlySaving > 0) ? capex / monthlySaving : 0;
-      const annualRoiPct = capex > 0 ? (((monthlySaving * 12) - capex) / capex) * 100 : 0;
+      const annualRoiPct = capex > 0 ? (((monthlySaving * 12) - capex) / capex) * 100 : NaN;
 
       const elMap = new Map(study.elements.map(e => [e.id, e]));
       const violations = [];
@@ -370,13 +380,14 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
     }
 
     function rebalanceRPW(){return propose('rpw',getActiveStudy().stations.future);}
-    function propose(method,count) {
+    async function propose(method,count) {
       const s=getActiveStudy();if(!s.elements.length)throw Error('Adicione elementos para balancear.');
       if(s.elements.some(e=>e.ergonomicZone==='red'&&!validException(e)))throw Error('A zona vermelha requer exceção aprovada e vigente.');
       const input=asDomain(s);input.stations.future=count;
-      const result=method==='sa'?optimizeSimulatedAnnealing(input,900):solveRPW(input);
-      const score=objectiveFor(input,result);
       const captured=JSON.stringify(s);
+      const result=s.elements.length>40?await engineeringJob(method,input,900):method==='sa'?optimizeSimulatedAnnealing(input,900):solveRPW(input);
+      if(JSON.stringify(getActiveStudy())!==captured)throw Error('O estudo mudou. Recalcule a proposta.');
+      const score=objectiveFor(input,result);
       openTools('proposal',{study:s,method,count,result,score,onApply:()=>{
         if(JSON.stringify(getActiveStudy())!==captured)throw Error('O estudo mudou. Recalcule a proposta.');
         pushUndoSnapshot();s.stations.future=count;
@@ -691,6 +702,13 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
     function renderChart(study, m) {
       const canvas = document.getElementById('cycle-canvas');
       if (!canvas) return;
+      const observed=chartMode==='current'?m.currentCycle:m.futureCycle;
+      const state=!(m.takt>0&&observed>0)?'empty':observed>m.takt?'over':'within';
+      const card=document.getElementById('chart-card'),flag=document.getElementById('chart-state');
+      card.dataset.state=state;
+      flag.textContent=state==='empty'?'Sem avaliação':state==='over'?'Acima do Takt':'Atende ao Takt';
+      canvas.setAttribute('aria-label',chartMode+' · '+flag.textContent+' · ciclo '+fmt1(observed)+' s · Takt '+fmt1(m.takt)+' s');
+
       const box = canvas.getBoundingClientRect();
       if (!box.width || !box.height) return;
 
@@ -919,7 +937,7 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       return `
         <div class="num-stepper">
           <input id="${inputId}" type="number" min="${min}" step="${step}" value="${value}"
-                 onchange="${onChangeAttr}"
+                 ${inputId.startsWith('el-')?'data-measurement="true"':''} onchange="${onChangeAttr}"
                  class="${widthClass} text-right px-2 py-1 text-xs font-semibold ${textColorClass}" />
           <div class="num-stepper-btns">
             <button type="button" class="num-stepper-btn" onclick="stepInput('${inputId}', ${step})" aria-label="Aumentar">▲</button>
@@ -976,7 +994,7 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
         const elementsToRender = (workFilterQuery && !areaMatches) ? matchingElements : allAreaElements;
 
         rowsHtml += `
-          <tr class="bg-obsidian-card hover:bg-obsidian-inner/70 transition">
+          <tr id="area-${area.id}" class="bg-obsidian-card hover:bg-obsidian-inner/70 transition">
             <td class="py-2.5 px-3.5 font-semibold text-white">
               <div class="flex flex-wrap items-center gap-2">
                 <button type="button"
@@ -1019,10 +1037,10 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
             const safeElId = escHtml(el.id);
 
             rowsHtml += `
-              <tr class="bg-[#0E1724] text-[11px] text-slate-300">
+              <tr id="task-${el.id}" class="bg-[#0E1724] text-[11px] text-slate-300">
                 <td class="py-2 pl-9 pr-3">
                   <div class="flex items-center gap-2">
-                    <span class="font-mono text-[10px] text-gold">${escHtml(el.id.toUpperCase())}</span>
+                    <span class="font-mono text-[10px] text-gold">E${String(study.elements.indexOf(el)+1).padStart(2,'0')}</span>
                     <input type="text" value="${escHtml(el.name)}"
                            onchange="updateElementField('${safeElId}', 'name', this.value)"
                            class="bg-transparent border-b border-transparent focus:border-gold text-slate-200 focus:outline-none w-full" />
@@ -1116,7 +1134,7 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       document.getElementById('kpi-mo-vals').textContent = `${fmtMoney2(m.unitLaborCurrent)} ➜ ${fmt2(m.unitLaborFuture)}`;
       document.getElementById('kpi-payback-vals').textContent = m.paybackMonths > 0
         ? `${fmt1(m.paybackMonths)}m • ${fmtPct(m.annualRoiPct)}`
-        : (m.capex === 0 ? 'Sem CAPEX • ROI ∞' : 'Sem retorno');
+        : (m.capex === 0 ? 'Sem CAPEX • ROI —' : 'Sem retorno');
 
       const circ = 238.76;
       const totalCurrentUnitCost = m.unitLaborCurrent + m.opsCostCurrent;
@@ -1216,7 +1234,17 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       `).join('');
     }
 
-    function renderAll() {
+    function updateVisibleTotals(study,m,elementId){
+      const el=study.elements.find(e=>e.id===elementId),area=study.areas.find(a=>a.name===el.area);
+      const set=(row,values)=>{if(row)values.forEach((val,i)=>row.cells[i+1].textContent=fmt1(val))};
+      const totals=(a,b,c,d)=>[a,b,a+b,c,d,c+d];
+      const sum=[0,0,0,0];for(const e of study.elements)if(e.area===el.area){sum[0]+=e.vaCurrent;sum[1]+=e.nvaCurrent;sum[2]+=e.vaFuture;sum[3]+=e.nvaFuture;}
+      set(document.getElementById('area-'+area.id),totals(...sum));
+      set(document.querySelector('#work-table-foot tr'),totals(m.vaCurrentTotal,m.nvaCurrentTotal,m.vaFutureTotal,m.nvaFutureTotal));
+      const row=document.getElementById('task-'+el.id);
+      if(row){row.cells[3].textContent=fmt1(el.vaCurrent+el.nvaCurrent);row.cells[6].textContent=fmt1(el.vaFuture+el.nvaFuture);}
+    }
+    function renderAll(editingId) {
       const study = getActiveStudy();if(!study)return;
       const t0=performance.now(),m=computeMetrics(study);
       performance.measure('cb-recalculo',{start:t0,end:performance.now()});
@@ -1224,7 +1252,7 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       renderDAG(study, m);
       renderStations(study, m);
       renderChart(study, m);
-      renderWorkCompositionTable(study, m);
+      if(editingId)updateVisibleTotals(study,m,editingId);else renderWorkCompositionTable(study,m);
       renderKPIsAndFinancials(study, m);
       if(!study.demand||!m.futureCycle){
         const label=study.demand?'Adicione tempos de trabalho':'Informe a demanda por turno';
@@ -1693,9 +1721,18 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       renderAll();
     }
 
-    function updateElementField(id,field,value) {
+    let editingCell=null;
+    document.addEventListener('focusout',event=>{if(event.target.matches?.('[data-measurement]'))editingCell=null});
+    document.addEventListener('input',event=>{
+      const input=event.target;if(!input.matches?.('[data-measurement]')||input.value==='')return;
+      const match=/^el-([a-f0-9-]+)-(vaCur|nvaCur|vaFut|nvaFut)$/.exec(input.id);if(!match)return;
+      const fields={vaCur:'vaCurrent',nvaCur:'nvaCurrent',vaFut:'vaFuture',nvaFut:'nvaFuture'};
+      try{updateElementField(match[1],fields[match[2]],input.value,true)}catch(e){showToast(e.message);}
+    });
+    function updateElementField(id,field,value,inline=false) {
       const study=getActiveStudy(), el=study.elements.find(e=>e.id===id);
       if(!el)return;
+      if(field!=='name'&&(String(value).trim()===''||!Number.isFinite(Number(value))))throw Error('Informe um número válido.');
       const v=field==='name'?String(value).trim():Number(value);
       if(el[field]===v)return;
       if(field==='futureStation')checkMove(study,el,v);
@@ -1703,11 +1740,12 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
         const fixed=study.equipment.find(r=>r.id===el.fixedEquipmentId)?.currentStationIndex;
         if(fixed!=null&&fixed!==v)throw Error('Este equipamento está fixado em F'+fixed+'.');
       }
-      pushUndoSnapshot();
+      if(!inline||editingCell!==id+field)pushUndoSnapshot();
+      editingCell=inline?id+field:null;
       const prior=el[field]; el[field]=v;
       if(['vaFuture','nvaFuture','vaCurrent','nvaCurrent'].includes(field)){el.validationStatus='hypothesis';el.evidenceRef=null;}
       recordAudit('Elemento editado',el.name+' · '+field+': '+prior+' → '+v);
-      saveAppState();renderAll();
+      saveAppState();renderAll(inline?id:undefined);
     }
 
     function removeArea(areaIdx) {
@@ -2056,9 +2094,20 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
     // Pillar 1B: Stochastic Monte Carlo Simulation (Takt overrun probability & P95 cycle)
     function runMonteCarloSimulation(study,m,iterations=600) {
       const key=JSON.stringify([study.stations.future,study.elements.map(e=>[e.vaFuture,e.nvaFuture,e.futureStation]),m.takt,study.cv,iterations]);
-      if(riskCache.key!==key){const r=runMonteCarlo(asDomain(study),iterations,study.cv??.08,47);
-        riskCache={key,value:{overrunProbabilityPct:r.riskPct,p95Cycle:r.p95Seconds,p95CycleSeconds:r.p95Seconds,trials:iterations,iterations,cv:study.cv??.08}};}
-      return riskCache.value;
+      const slot=iterations;
+      if(riskCache[slot]?.key===key)return riskCache[slot].value;
+      const wrap=r=>({overrunProbabilityPct:r.riskPct,p95Cycle:r.p95Seconds,trials:iterations,cv:study.cv??.08});
+      if(study.elements.length<=40){
+        const value=wrap(runMonteCarlo(asDomain(study),iterations,study.cv??.08,47));riskCache[slot]={key,value};return value;
+      }
+      const entry={key,value:wrap({riskPct:null,p95Seconds:null})};
+      riskCache[slot]=entry;
+      engineeringJob('risk',asDomain(study),iterations,study.cv??.08).then(result=>{
+        if(riskCache[slot]!==entry)return;
+        entry.value=wrap(result);
+        if(slot===600){const b=document.getElementById('monte-carlo-risk-badge');if(b)b.textContent=result.riskPct==null?'Risco Takt: —':'Risco Takt: '+Math.round(result.riskPct)+'%';}
+        if(slot===800&&!document.getElementById('ai-copilot-modal')?.classList.contains('hidden'))openAiCopilotModal();
+      }).catch(e=>showToast(e.message));return entry.value;
     }
 
     // Pillar 1C: Multi-Objective Simulated Annealing Optimizer (Cycle Time + Smoothness Index + Precedence + Monuments)
@@ -2570,6 +2619,11 @@ import { rebalanceRPW as solveRPW, optimizeSimulatedAnnealing, runMonteCarlo, ob
       }
 
       document.getElementById("boot-state")?.remove();document.body.classList.remove("cb-loading");
+      const referenceLink=document.getElementById('cb-reference-link');
+      if(location.protocol==='file:')referenceLink.hidden=true;
+      else if(new URLSearchParams(location.search).get('referencia')==='produto-a'){
+        referenceLink.href=location.pathname;referenceLink.textContent='Voltar ao meu portfólio';
+      }
       initSidebarState();
       renderAll();
     }

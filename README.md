@@ -15,7 +15,7 @@ Aplicação de cronoanálise e balanceamento para engenharia de processos. O eng
 
 ## Verificar a linha de montagem
 
-Abra **Linha de Montagem - Produto A**. O estudo de demonstração tem 6 operações, 15 elementos e 10 relações de precedência. Use **+ mostrar detalhes** em Recebimento para editar um elemento.
+Abra a [demonstração do Produto A](https://dekomao.github.io/CronoBalance-Industrial-MVP/?referencia=produto-a). Ela tem armazenamento separado e pode ser acessada no seletor **Estudo ativo**. A página inicial continua abrindo o seu próprio portfólio. O estudo de demonstração tem 6 operações, 15 elementos e 10 relações de precedência. Use **+ mostrar detalhes** em Recebimento para editar um elemento.
 
 | Indicador derivado | Atual | Futuro |
 | --- | ---: | ---: |

@@ -233,6 +233,7 @@
                   <span id="study-picker-count" class="text-gold font-mono">2 estudos</span>
                 </div>
                 <div id="study-picker-list" class="max-h-60 overflow-y-auto custom-scroll divide-y divide-obsidian-border/70"></div>
+                <a id="cb-reference-link" href="?referencia=produto-a" class="block border-t border-obsidian-border px-3.5 py-2.5 text-xs font-semibold text-sky-300 hover:text-white">Abrir demonstração do Produto A ↗</a>
               </div>
             </div>
           </div>
@@ -576,10 +577,10 @@
       </div>
 
       <!-- Column 3 (4 cols): Estado Futuro / Yamazumi Chart -->
-      <div class="lg:col-span-4 bg-obsidian-card border border-obsidian-border rounded-2xl p-4 flex flex-col justify-between shadow-lg">
+      <div id="chart-card" class="lg:col-span-4 bg-obsidian-card border border-obsidian-border rounded-2xl p-4 flex flex-col justify-between shadow-lg">
         <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div>
-            <h2 id="chart-card-title" class="text-sm font-bold text-white">Estado Futuro</h2>
+            <h2 id="chart-card-title" class="text-sm font-bold text-white">Estado Futuro</h2><span id="chart-state" class="cb-chart-state" aria-live="polite"></span>
             <p id="chart-card-subtitle" class="text-[11px] text-slate-400">Carga por posto vs. Takt Time</p>
           </div>
           <div class="flex items-center gap-1 bg-obsidian-slot p-1 rounded-xl border border-obsidian-border">

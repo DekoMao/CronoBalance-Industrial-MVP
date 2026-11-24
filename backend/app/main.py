@@ -728,9 +728,8 @@ def ergonomic_exception(study_id: str, element_id: str, payload: dict, request: 
 @app.delete("/api/v1/studies/{study_id}",status_code=204)
 def archive_study(study_id:str,request:Request,if_match:str|None=Header(None,alias="If-Match"),
                   actor:Actor=Depends(require_role("engineer","admin")),db:Session=Depends(get_db)):
-    study=load_study(db,study_id,actor)
-    if study.status=="archived": return Response(status_code=204)
     study=load_study(db,study_id,actor,lock=True)
+    if study.status=="archived": return Response(status_code=204)
     require_version(study,if_match)
     before=study_payload(db,study)
     study.status,study.updated_by,study.version="archived",actor.user.id,study.version+1

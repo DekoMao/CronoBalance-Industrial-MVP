@@ -60,3 +60,34 @@ for(const width of [390,820]){
     await page.screenshot({path:info.outputPath('CronoBalance-'+width+'.png'),fullPage:true});
   });
 }
+
+test('500 elementos, simulação em worker e recálculo dos agregados abaixo de 16 ms',async({page},info)=>{
+  await boot(page);
+  const elements=Array.from({length:500},(_,i)=>({id:'E'+i,area:'Montagem',name:'Elemento '+i,
+    currentStation:1+i%5,futureStation:1+i%5,vaCurrent:1,nvaCurrent:1,vaFuture:1,nvaFuture:0}));
+  const file={version:2,project:{name:'Linha de carga',product:'P',shiftSeconds:27000,demand:180,stations:{current:5,future:5}},areas:[{name:'Montagem'}],elements};
+  await page.locator('input[type=file]').first().setInputFiles({name:'carga.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(file))});
+  await expect(page.locator('#station-cycle-val')).toHaveText('100,0s');
+  await expect(page.locator('#monte-carlo-risk-badge')).toHaveText(/Risco Takt: \d+%/);
+  await page.locator('#work-filter-input').fill('Elemento 499');
+  const nva=page.locator('input[id$="-nvaFut"]').first();
+  await page.evaluate(()=>performance.clearMeasures('cb-recalculo'));
+  for(let n=1;n<=12;n++)await nva.fill(String(n));
+  await expect(page.locator('#station-cycle-val')).toHaveText('112,0s');
+  const samples=await page.evaluate(()=>performance.getEntriesByName('cb-recalculo').map(e=>e.duration).sort((a,b)=>a-b));
+  expect(samples.length).toBeGreaterThanOrEqual(12);
+  const p95=samples[Math.ceil(samples.length*.95)-1];
+  await info.attach('tempos-de-calculo.json',{body:Buffer.from(JSON.stringify({elementos:500,p95,samples})),contentType:'application/json'});
+  expect(p95).toBeLessThan(16);
+});
+
+test('a referência abre com dez regras e preserva o portfólio migrado',async({page})=>{
+  await page.addInitScript(()=>{localStorage.setItem('cronobalance-industrial-v2',JSON.stringify({version:2,project:{name:'Meu piloto',stations:{current:1,future:1}},areas:[{name:'Controle'}],elements:[]}))});
+  await page.goto('./');await expect(page.locator('#study-picker-label')).toHaveText('Meu piloto');
+  await page.locator('#study-picker-trigger').click();await page.locator('#cb-reference-link').click();
+  await expect(page.locator('#station-cycle-val')).toHaveText('96,0s');
+  await expect(page.getByText(/10 regras/).first()).toBeVisible();
+  await expect(page.locator('#strip-roi-val')).toContainText('591,7');
+  await page.locator('#study-picker-trigger').click();await page.locator('#cb-reference-link').click();
+  await expect(page.locator('#study-picker-label')).toHaveText('Meu piloto');
+});

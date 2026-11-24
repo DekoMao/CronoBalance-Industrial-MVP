@@ -15,10 +15,11 @@ let persisted:Portfolio, writeChain=Promise.resolve(), flight:Promise<void>|unde
 let update:(p:Portfolio)=>void, info:(s:string)=>void, clash:Clash|null=null;
 const base=(import.meta.env.VITE_API_BASE_URL??'').replace(/\/$/,'');
 const isFile=location.protocol==='file:';
+const referenceMode=!isFile&&new URLSearchParams(location.search).get('referencia')==='produto-a';
 const authCache='cb-account:'+base;
 let status='Salvo localmente';
 const state=(s:string)=>{status=s;info?.(s)};
-export const connection=()=>({status,account,conflict:clash,configured:apiConfigured&&!isFile,canLogin:oidcEnabled});
+export const connection=()=>({status,account,conflict:clash,configured:apiConfigured&&!isFile&&!referenceMode,canLogin:oidcEnabled&&!referenceMode});
 export const login=()=>userManager?.signinRedirect();
 export async function logout(clear=false){await writeChain;if(clear&&db)await db.delete();sessionStorage.removeItem(authCache);await userManager?.removeUser();location.href=import.meta.env.BASE_URL;}
 export async function request(path:string,method='GET',payload?:unknown,etag?:string,key?:string){
@@ -63,7 +64,7 @@ async function portfolio():Promise<Portfolio>{
 }
 function schedule(delay=500){clearTimeout(timer);if(account&&navigator.onLine&&!clash)timer=window.setTimeout(()=>void sync(),delay)}
 async function attach(){
-  if(!apiConfigured||isFile)return;
+  if(!apiConfigured||isFile||referenceMode)return;
   const callback=new URLSearchParams(location.search);
   if(callback.has('code')&&userManager){await userManager.signinCallback();history.replaceState(null,'',import.meta.env.BASE_URL)}
   token=await accessToken();
@@ -76,12 +77,12 @@ async function attach(){
 export async function openStore(seed:()=>any[],onRemote:(p:Portfolio)=>void,onStatus:(s:string)=>void,embedded?:any){
   update=onRemote;info=onStatus;
   await attach();
-  const scope=account?base+':'+account.organizationId+':'+account.userId:'local';
+  const scope=referenceMode?'referencia-produto-a':account?base+':'+account.organizationId+':'+account.userId:'local';
   db=new WorkspaceDb(scope+(embedded?':file:'+String(embedded.activeStudyId):''));
   let p=await portfolio();
   if(!p.studies.length){
     let data=embedded;
-    if(!data&&!account){
+    if(!data&&!account&&!referenceMode){
       for(const k of ['cronobalance_sdd_v2_0_studies','cronobalance_sdd_v1_5_studies','cronobalance-industrial-v2','cronobalance-industrial-v1']){const legacy=localStorage.getItem(k);if(legacy){data=JSON.parse(legacy);break}}
       if(!data&&await Dexie.exists('cronobalance-industrial-v24')){
         const prev=new Dexie('cronobalance-industrial-v24');await prev.open();const list=await prev.table('studies').toArray();prev.close();if(list.length)data={studies:list};
